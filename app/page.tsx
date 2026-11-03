@@ -77,6 +77,7 @@ export default function Home(){
   const [filterCategory,setFilterCategory]=useState("all");
   const [filterSubcategory,setFilterSubcategory]=useState("all");
   const [search,setSearch]=useState("");
+  const [selectedVideoIds,setSelectedVideoIds]=useState<string[]>([]);
   const fileRef=useRef<HTMLInputElement>(null);
 
   useEffect(()=>{
@@ -268,7 +269,43 @@ export default function Home(){
     const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="youtube-import-results.csv";a.click();URL.revokeObjectURL(a.href);
   }
-  function deleteVideo(id:string){if(!confirm("Remove this video from your library?"))return;setVideos(p=>p.filter(v=>v.id!==id));}
+  function toggleVideoSelection(id:string, checked:boolean){
+    setSelectedVideoIds(current=>checked
+      ? (current.includes(id)?current:[...current,id])
+      : current.filter(item=>item!==id));
+  }
+  function toggleVisibleSelection(){
+    const visibleIds=filtered.map(v=>v.id);
+    const allVisibleSelected=visibleIds.length>0&&visibleIds.every(id=>selectedVideoIds.includes(id));
+    setSelectedVideoIds(current=>allVisibleSelected
+      ? current.filter(id=>!visibleIds.includes(id))
+      : [...new Set([...current,...visibleIds])]);
+  }
+  function clearVideoSelection(){setSelectedVideoIds([]);}
+  function deleteSelectedVideos(){
+    const idsToDelete=new Set(selectedVideoIds);
+    const count=videos.filter(v=>idsToDelete.has(v.id)).length;
+    if(!count){setSelectedVideoIds([]);return;}
+    if(!confirm(`Permanently remove ${count} selected video(s) from this browser's library? This will not delete the videos from YouTube.`))return;
+    const remaining=videos.filter(v=>!idsToDelete.has(v.id));
+    try{
+      localStorage.setItem(STORAGE_KEY,JSON.stringify({categories,videos:remaining}));
+      setVideos(remaining);
+      setSelectedVideoIds([]);
+      setNotice(`${count} video(s) removed from this browser's library.`);
+    }catch{
+      setNotice("Could not save the deletion. Your library has not been changed.");
+    }
+  }
+  function deleteVideo(id:string){
+    if(!confirm("Remove this video from your library? This will not delete it from YouTube."))return;
+    const remaining=videos.filter(v=>v.id!==id);
+    try{
+      localStorage.setItem(STORAGE_KEY,JSON.stringify({categories,videos:remaining}));
+      setVideos(remaining);
+      setSelectedVideoIds(current=>current.filter(item=>item!==id));
+    }catch{setNotice("Could not save the deletion. Your library has not been changed.");}
+  }
   function changeVideoCategory(videoId:string,catId:string){
     const cat=categories.find(c=>c.id===catId);setVideos(p=>p.map(v=>v.id===videoId?{...v,categoryId:catId,subcategoryId:cat?.subcategories[0]?.id||""}:v));
   }
@@ -337,12 +374,29 @@ export default function Home(){
             <option value="all">All subcategories</option>{categories.filter(c=>filterCategory==="all"||c.id===filterCategory).flatMap(c=>c.subcategories.map(s=><option key={`${c.id}-${s.id}`} value={s.id}>{c.name} / {s.name}</option>))}
           </select>
         </div>
+        <div className="bulkActions">
+          <div className="bulkSelectionInfo">
+            <strong>{selectedVideoIds.length} selected</strong>
+            <button type="button" className="textButton" onClick={toggleVisibleSelection} disabled={!filtered.length}>
+              {filtered.length>0&&filtered.every(v=>selectedVideoIds.includes(v.id))?"Deselect visible":"Select visible"}
+            </button>
+            <button type="button" className="textButton" onClick={clearVideoSelection} disabled={!selectedVideoIds.length}>Clear selection</button>
+          </div>
+          <button type="button" className="bulkDeleteButton" onClick={deleteSelectedVideos} disabled={!selectedVideoIds.length}>
+            Delete selected{selectedVideoIds.length?` (${selectedVideoIds.length})`:""}
+          </button>
+        </div>
         {filtered.length===0?<div className="empty"><div className="emptyIcon">▧</div><h3>No videos to show</h3><p>Import YouTube links above to start building your library.</p></div>:
           <div className="videoGrid">{filtered.map(v=>{
             const cat=categories.find(c=>c.id===v.categoryId);const sub=cat?.subcategories.find(s=>s.id===v.subcategoryId);
             return <article className="videoCard" key={v.id}>
               <a className="thumb" href={v.url} target="_blank" rel="noreferrer"><img src={v.thumbnail} alt={v.title}/>{v.duration!=null&&<span>{durationLabel(v.duration)}</span>}</a>
-              <div className="videoBody"><h3><a href={v.url} target="_blank" rel="noreferrer">{v.title}</a></h3><p className="channel">{v.channel||"Unknown channel"}</p><div className="tags"><span>{cat?.name||"Uncategorised"}</span>{sub&&<span>{sub.name}</span>}</div>
+              <div className="videoBody">
+                <label className="videoSelectLabel">
+                  <input type="checkbox" checked={selectedVideoIds.includes(v.id)} onChange={e=>toggleVideoSelection(v.id,e.target.checked)} aria-label={`Select ${v.title}`}/>
+                  Select video
+                </label>
+                <h3><a href={v.url} target="_blank" rel="noreferrer">{v.title}</a></h3><p className="channel">{v.channel||"Unknown channel"}</p><div className="tags"><span>{cat?.name||"Uncategorised"}</span>{sub&&<span>{sub.name}</span>}</div>
                 <label className="moveLabel">Move to category</label><select value={v.categoryId} onChange={e=>changeVideoCategory(v.id,e.target.value)}>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
                 <div className="cardFoot"><small>Video ID: {v.id}</small><button className="removeButton" onClick={()=>deleteVideo(v.id)} title="Remove from library">Remove</button></div>
               </div>

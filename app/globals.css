@@ -15,3 +15,15 @@
 .resultDetails strong{font-size:11px;overflow-wrap:anywhere}
 .resultDetails span{font-size:10px;color:#7b8989;overflow-wrap:anywhere}
 @media(max-width:620px){.importReportHead{align-items:flex-start;flex-direction:column}.resultRow{flex-direction:column;gap:4px}.resultStatus{flex:auto}}
+
+
+/* Bulk video selection and deletion */
+.bulkActions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 15px;padding:10px 12px;background:#fff;border:1px solid #e1e9e8;border-radius:10px}
+.bulkSelectionInfo{display:flex;align-items:center;flex-wrap:wrap;gap:14px}
+.bulkSelectionInfo strong{font-size:12px;color:#344748}
+.bulkSelectionInfo .textButton{font-size:11px}
+.bulkActions button:disabled{opacity:.45;cursor:not-allowed}
+.bulkDeleteButton{background:#fff3f1;color:#a43d34;border:1px solid #f0cfca;padding:8px 12px;font-size:11px}
+.videoSelectLabel{display:flex;align-items:center;gap:7px;margin:0 0 9px;color:#526262;font-size:11px;font-weight:700;cursor:pointer}
+.videoSelectLabel input{width:15px;height:15px;margin:0;accent-color:#087f78;cursor:pointer}
+@media(max-width:620px){.bulkActions{align-items:flex-start;flex-direction:column}.bulkSelectionInfo{gap:10px}.bulkDeleteButton{width:100%}}
