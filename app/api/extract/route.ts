@@ -1,86 +1,149 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "node:child_process";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
-type Extracted = {
-  id?: string; title?: string; thumbnail?: string;
-  thumbnails?: Array<{url?: string; width?: number; height?: number}>;
-  webpage_url?: string; original_url?: string; channel?: string; uploader?: string;
-  duration?: number; upload_date?: string;
+ type YouTubeApiVideo = {
+  id?: string;
+  snippet?: {
+    title?: string;
+    channelTitle?: string;
+    publishedAt?: string;
+    thumbnails?: Record<string, { url?: string; width?: number; height?: number }>;
+  };
+  contentDetails?: { duration?: string };
 };
 
-function allowed(raw: string) {
+type Extracted = {
+  id: string;
+  title: string;
+  thumbnail: string;
+  url: string;
+  channel: string;
+  duration: number | null;
+  uploadDate: string;
+};
+
+function getVideoId(raw: string): string | null {
   try {
-    const u = new URL(raw);
+    const u = new URL(raw.trim());
     const host = u.hostname.toLowerCase().replace(/^www\./, "");
-    return u.protocol === "https:" && [
-      "youtube.com", "m.youtube.com", "youtu.be", "youtube-nocookie.com"
-    ].includes(host);
-  } catch { return false; }
+    if (u.protocol !== "https:") return null;
+
+    let id: string | null = null;
+    if (host === "youtu.be") {
+      id = u.pathname.split("/").filter(Boolean)[0] || null;
+    } else if (["youtube.com", "m.youtube.com", "youtube-nocookie.com"].includes(host)) {
+      id = u.searchParams.get("v");
+      if (!id) {
+        const parts = u.pathname.split("/").filter(Boolean);
+        if (["embed", "shorts", "live"].includes(parts[0])) id = parts[1] || null;
+      }
+    }
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
 }
 
-function extract(url: string): Promise<Extracted> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("yt-dlp", [
-      "--dump-single-json", "--skip-download", "--no-warnings", "--no-playlist",
-      "--no-call-home", "--socket-timeout", "15", url
-    ], {shell: false});
-    let out = "", err = "";
-    const timer = setTimeout(() => child.kill("SIGKILL"), 25000);
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", chunk => { out += chunk; if (out.length > 2_000_000) child.kill("SIGKILL"); });
-    child.stderr.on("data", chunk => { err += chunk; if (err.length > 20000) err = err.slice(-20000); });
-    child.on("error", e => {
-      clearTimeout(timer);
-      reject(new Error(e.message.includes("ENOENT") ? "yt-dlp is not installed on the server." : e.message));
-    });
-    child.on("close", code => {
-      clearTimeout(timer);
-      if (code !== 0) return reject(new Error(err.trim().split("\n").slice(-2).join(" ") || `yt-dlp exited (${code})`));
-      try { resolve(JSON.parse(out)); } catch { reject(new Error("Invalid metadata response from yt-dlp.")); }
-    });
-  });
+function durationToSeconds(value?: string): number | null {
+  if (!value) return null;
+  const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!match) return null;
+  return Number(match[1] || 0) * 3600 + Number(match[2] || 0) * 60 + Number(match[3] || 0);
+}
+
+function thumbnailUrl(thumbnails?: Record<string, { url?: string; width?: number; height?: number }>): string {
+  if (!thumbnails) return "";
+  for (const key of ["maxres", "standard", "high", "medium", "default"]) {
+    const url = thumbnails[key]?.url;
+    if (url) return url;
+  }
+  return "";
+}
+
+async function extract(url: string, apiKey: string): Promise<Extracted> {
+  const id = getVideoId(url);
+  if (!id) throw new Error("Invalid or unsupported YouTube URL.");
+
+  const endpoint = new URL("https://www.googleapis.com/youtube/v3/videos");
+  endpoint.searchParams.set("part", "snippet,contentDetails");
+  endpoint.searchParams.set("id", id);
+  endpoint.searchParams.set("key", apiKey);
+
+  const response = await fetch(endpoint.toString(), { cache: "no-store" });
+  const payload = await response.json().catch(() => null) as {
+    items?: YouTubeApiVideo[];
+    error?: { message?: string; errors?: Array<{ reason?: string }> };
+  } | null;
+
+  if (!response.ok) {
+    const reason = payload?.error?.errors?.[0]?.reason;
+    if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
+      throw new Error("YouTube Data API quota exceeded. Try again after the quota resets.");
+    }
+    if (reason === "keyInvalid" || reason === "accessNotConfigured") {
+      throw new Error("The YouTube Data API key is invalid or the YouTube Data API v3 is not enabled for its Google Cloud project.");
+    }
+    throw new Error(payload?.error?.message || `YouTube API request failed (HTTP ${response.status}).`);
+  }
+
+  const item = payload?.items?.[0];
+  if (!item?.id || !item.snippet?.title) {
+    throw new Error("YouTube did not return this video. It may be private, deleted, unavailable, or restricted.");
+  }
+
+  const thumbnail = thumbnailUrl(item.snippet.thumbnails);
+  if (!thumbnail) throw new Error("YouTube did not return a thumbnail for this video.");
+
+  return {
+    id: item.id,
+    title: item.snippet.title,
+    thumbnail,
+    url: `https://www.youtube.com/watch?v=${item.id}`,
+    channel: item.snippet.channelTitle || "",
+    duration: durationToSeconds(item.contentDetails?.duration),
+    // YouTube Data API exposes publishedAt (publication date), not yt-dlp's upload_date.
+    uploadDate: item.snippet.publishedAt ? item.snippet.publishedAt.slice(0, 10).replace(/-/g, "") : "",
+  };
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const urls: unknown = body?.urls;
-    if (!Array.isArray(urls) || urls.length < 1) return NextResponse.json({error: "Provide a list of URLs."}, {status: 400});
-    if (urls.length > 100 || urls.some(u => typeof u !== "string" || u.length > 2048))
-      return NextResponse.json({error: "Maximum 100 URLs per request."}, {status: 400});
+    if (!Array.isArray(urls) || urls.length < 1) {
+      return NextResponse.json({ error: "Provide a list of URLs." }, { status: 400 });
+    }
+    if (urls.length > 100 || urls.some(u => typeof u !== "string" || u.length > 2048)) {
+      return NextResponse.json({ error: "Maximum 100 URLs per request; each URL must be a string no longer than 2048 characters." }, { status: 400 });
+    }
 
-    const results: Array<{url:string; video?:{
-      id:string; title:string; thumbnail:string; url:string; channel:string;
-      duration:number|null; uploadDate:string;
-    }; error?:string}> = [];
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({
+        results: (urls as string[]).map(url => ({
+          url,
+          error: "YOUTUBE_API_KEY is not configured on the server. Add it to your Netlify environment variables and redeploy.",
+        })),
+      });
+    }
 
-    // Process in order. The client normally sends one URL per request so it
-    // can update the import report after each link; this also protects callers
-    // that submit multiple URLs in a single request.
+    const results: Array<{ url: string; video?: Extracted; error?: string }> = [];
     for (const raw of urls as string[]) {
       const url = raw.trim();
-      if (!allowed(url)) {
-        results.push({url, error: "Only HTTPS YouTube URLs are accepted."});
+      if (!getVideoId(url)) {
+        results.push({ url, error: "Only valid HTTPS YouTube video URLs are accepted." });
         continue;
       }
       try {
-        const info = await extract(url);
-        const thumbnail = info.thumbnail || [...(info.thumbnails || [])].sort((a,b)=>(b.width||0)-(a.width||0))[0]?.url;
-        if (!info.id || !info.title || !thumbnail) throw new Error("Title, video ID or thumbnail unavailable.");
-        results.push({url, video: {
-          id: info.id, title: info.title, thumbnail,
-          url: info.webpage_url || info.original_url || url,
-          channel: info.channel || info.uploader || "",
-          duration: info.duration ?? null, uploadDate: info.upload_date || ""
-        }});
-      } catch (e) {
-        results.push({url, error: e instanceof Error ? e.message : "Extraction failed."});
+        const video = await extract(url, apiKey);
+        results.push({ url, video });
+      } catch (error) {
+        results.push({ url, error: error instanceof Error ? error.message : "Metadata lookup failed." });
       }
     }
-    return NextResponse.json({results});
-  } catch { return NextResponse.json({error: "Invalid request."}, {status: 400}); }
+    return NextResponse.json({ results });
+  } catch {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
 }

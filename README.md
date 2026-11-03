@@ -62,3 +62,7 @@ If the CSV has no Category/Subcategory columns, the current category selection i
 
 ## Deployment security
 The extraction API invokes yt-dlp on submitted URLs. This is designed for a local or trusted internal app. Before exposing it publicly, add authentication, rate limiting, request quotas, and preferably a job queue. Keep yt-dlp updated. The app only accepts YouTube hosts, but production systems should also validate and monitor outbound requests to mitigate SSRF and abuse.
+
+## Netlify deployment
+
+The metadata API now uses the official YouTube Data API instead of launching `yt-dlp`. Before deploying, create a YouTube Data API v3 key and add it to Netlify as the server-side environment variable `YOUTUBE_API_KEY`, then redeploy. Follow `NETLIFY_SETUP.md` for the exact steps. Do not expose the key with a `NEXT_PUBLIC_` variable.
