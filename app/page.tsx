@@ -189,7 +189,7 @@ export default function Home(){
 
   async function extractRows(rows:ImportRow[]){
     if(!rows.length){setNotice("No URLs were found.");return;}
-    if(rows.length>100){setNotice("Import up to 100 URLs at a time.");return;}
+    if(rows.length>200){setNotice("Import up to 100 URLs at a time.");return;}
 
     setLoading(true);
     setImportResults([]);
