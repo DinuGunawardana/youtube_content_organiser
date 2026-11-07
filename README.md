@@ -1,4 +1,4 @@
-# YouTube Content Organiser
+# Content Organiser
 
 A personal web application for collecting YouTube videos, extracting
 their metadata, and organising them into custom categories and
@@ -27,15 +27,15 @@ filtering, and bulk deletion.
 
 ## Features
 
-### Video importing
+### Link importing
 
--   Paste one or more YouTube video URLs, one URL per line.
+-   Paste one or more public website URLs, one URL per line. YouTube, articles, Facebook, Instagram, TikTok, Pinterest, LinkedIn, Reddit and other HTTP/HTTPS links are accepted.
 -   Upload a CSV file containing video URLs and optional category
     information.
 -   Process imports sequentially: the next URL is processed after the
     current URL has a result.
 -   Display progress and per-link outcomes while importing.
--   Save successfully imported videos to the browser library.
+-   Save successfully imported links to the browser library.
 -   Download an import-results CSV containing the status and reason for
     each processed URL.
 
@@ -166,12 +166,12 @@ are exposed to browser code.
 
 Do not commit `.env.local` or share your API key publicly.
 
-## Importing videos
+## Importing links
 
 ### Paste URLs
 
 1.  Open the organiser.
-2.  Paste one YouTube URL per line into **Paste YouTube links**.
+2.  Paste one website URL per line into **Paste links**. Full `https://` URLs and bare domains such as `instagram.com/...` are accepted.
 3.  Select the intended category and subcategory in the sidebar.
 4.  Click **Import pasted links**.
 5.  Watch the import results panel. Each URL is processed and reported
@@ -213,8 +213,8 @@ Example:
 ``` csv
 URL,Category,Subcategory
 https://www.youtube.com/watch?v=VIDEO_ID,Food,Recipes
-https://youtu.be/VIDEO_ID,DIY,Home Projects
-https://www.youtube.com/watch?v=ANOTHER_ID,Agriculture,Organic Farming
+https://www.facebook.com/example/posts/123,Social Media,Facebook
+https://www.instagram.com/p/EXAMPLE/,Social Media,Instagram
 ```
 
 The CSV parser supports quoted fields, escaped quotes, commas and
@@ -439,3 +439,10 @@ to the same video are treated as the same video.
 -   Before using this as a public multi-user service, add
     authentication, server-side persistence, rate limiting and abuse
     protection.
+
+
+### Non-YouTube links
+
+Non-YouTube URLs are saved as bookmarks. The organiser identifies common platforms such as Facebook, Instagram, TikTok, Pinterest, LinkedIn, X/Twitter, Reddit, Threads, Telegram and YouTube channel/playlist pages. Other valid website links are classified as articles or general website links based on their domain and URL path.
+
+For these links, the organiser creates a readable fallback title from the URL and displays a platform preview card. It does not automatically scrape the article text, social post content, images or author information. The fallback title is generated from the URL path or domain, so users may want to rename or edit it in a future enhancement. A Facebook or Instagram URL can therefore be saved successfully even if the content itself is private, login-protected or unavailable to automated tools.

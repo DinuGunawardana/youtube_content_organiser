@@ -6,7 +6,7 @@ type Category = { id: string; name: string; subcategories: {id: string; name: st
 type Video = {
   id: string; title: string; thumbnail: string; url: string; channel?: string;
   duration?: number | null; uploadDate?: string; categoryId: string; subcategoryId: string;
-  addedAt: string;
+  addedAt: string; contentType?: string; platform?: string;
 };
 type ExtractResult = {url: string; video?: Omit<Video, "categoryId"|"subcategoryId"|"addedAt">; error?: string};
 type ImportRow = {url: string; category?: string; subcategory?: string};
@@ -39,7 +39,7 @@ function parseCsv(text:string): ImportRow[] {
   row.push(field.trim()); if(row.some(x=>x)) rows.push(row);
   if(!rows.length) return [];
   const headers=rows[0].map(x=>x.toLowerCase().replace(/^\uFEFF/,""));
-  const urlIndex=headers.findIndex(x=>["url","youtube url","video url","link"].includes(x));
+  const urlIndex=headers.findIndex(x=>["url","link","website","website url","article url","youtube url","video url","facebook url","instagram url","tiktok url","pinterest url","linkedin url","twitter url","x url"].includes(x) || x.endsWith(" url"));
   const catIndex=headers.findIndex(x=>["category","main category"].includes(x));
   const subIndex=headers.findIndex(x=>["subcategory","sub-category","sub category"].includes(x));
   const start = urlIndex >= 0 ? 1 : 0;
@@ -50,13 +50,72 @@ function canonicalVideoId(raw:string):string|null{
   try{
     const u=new URL(raw.trim()); const host=u.hostname.toLowerCase().replace(/^www\./,"");
     if(host==="youtu.be") return u.pathname.split("/").filter(Boolean)[0]||null;
-    if(["youtube.com","m.youtube.com","youtube-nocookie.com"].includes(host)){
+    if(["youtube.com","m.youtube.com","youtube-nocookie.com","music.youtube.com"].includes(host)){
       if(u.searchParams.get("v")) return u.searchParams.get("v");
       const p=u.pathname.split("/").filter(Boolean);
       if(["embed","shorts","live"].includes(p[0])) return p[1]||null;
     }
   }catch{}
   return null;
+}
+type LinkInfo = {
+  id:string; url:string; kind:"youtube"|"web"; platform:string; contentType:string;
+  host:string; title:string;
+};
+function stableLinkId(value:string):string{
+  // FNV-1a 32-bit hash; URL itself is also stored and used for opening the link.
+  let hash=0x811c9dc5;
+  for(let i=0;i<value.length;i++){hash^=value.charCodeAt(i);hash=Math.imul(hash,0x01000193);}
+  return `link-${(hash>>>0).toString(16).padStart(8,"0")}`;
+}
+function identifyLink(raw:string):LinkInfo|null{
+  try{
+    const input=raw.trim();
+    if(!input)return null;
+    const candidate=/^https?:\/\//i.test(input)?input:`https://${input}`;
+    const u=new URL(candidate);
+    if(!["http:","https:"].includes(u.protocol) || u.username || u.password)return null;
+    const host=u.hostname.toLowerCase().replace(/^www\./,"");
+    if(!host || !host.includes(".") || host==="localhost" || host.endsWith(".local"))return null;
+
+    const youtubeId=canonicalVideoId(u.toString());
+    if(youtubeId && /^[A-Za-z0-9_-]{11}$/.test(youtubeId)){
+      return {id:youtubeId,url:`https://www.youtube.com/watch?v=${youtubeId}`,kind:"youtube",platform:"YouTube",contentType:"YouTube video",host:"YouTube",title:""};
+    }
+
+    // Remove common tracking parameters so the same shared link is less likely to be saved twice.
+    for(const key of [...u.searchParams.keys()]){
+      if(/^utm_/i.test(key) || ["fbclid","gclid","igsh","igshid","si","feature"].includes(key.toLowerCase())) u.searchParams.delete(key);
+    }
+    u.hash="";
+    if(u.pathname.length>1) u.pathname=u.pathname.replace(/\/+$/,"");
+    const normalized=u.toString();
+    const socialPlatforms:Array<[RegExp,string,string]>=[
+      [/(^|\.)facebook\.com$|(^|\.)fb\.watch$/,"Facebook","Facebook link"],
+      [/(^|\.)instagram\.com$/,"Instagram","Instagram link"],
+      [/(^|\.)tiktok\.com$/,"TikTok","TikTok link"],
+      [/(^|\.)pinterest\.[a-z.]+$/,"Pinterest","Pinterest link"],
+      [/(^|\.)linkedin\.com$/,"LinkedIn","LinkedIn link"],
+      [/(^|\.)x\.com$|(^|\.)twitter\.com$/,"X / Twitter","Social media link"],
+      [/(^|\.)reddit\.com$|(^|\.)redd\.it$/,"Reddit","Reddit link"],
+      [/(^|\.)threads\.net$/,"Threads","Social media link"],
+      [/(^|\.)t\.me$|(^|\.)telegram\.me$/,"Telegram","Social media link"]
+    ];
+    const social=socialPlatforms.find(([pattern])=>pattern.test(host));
+    const articleHosts=/(^|\.)medium\.com$|(^|\.)substack\.com$|(^|\.)dev\.to$|(^|\.)theconversation\.com$/;
+    const path=u.pathname.split("/").filter(Boolean).pop()||"";
+    const looksLikeArticle=articleHosts.test(host) || /\.(html?|php)$/i.test(path) || /\/(article|articles|blog|news|story|stories)\//i.test(u.pathname);
+    const isYoutubeSite=["youtube.com","m.youtube.com","music.youtube.com","youtube-nocookie.com","youtu.be"].includes(host);
+    const platform=social?.[1] || (isYoutubeSite?"YouTube":host);
+    const contentType=social?.[2] || (isYoutubeSite?"YouTube link":looksLikeArticle?"Article":"Website link");
+    let decodedPath=path;
+    try{decodedPath=decodeURIComponent(path);}catch{}
+    let title=decodedPath ? decodedPath.replace(/\.[a-z0-9]{1,5}$/i,"").replace(/[-_]+/g," ").replace(/\s+/g," ").trim() : "";
+    if(!title || title.length<3) title=host;
+    title=title.charAt(0).toUpperCase()+title.slice(1);
+    if(social || isYoutubeSite) title=`${platform} link — ${title}`;
+    return {id:stableLinkId(normalized),url:normalized,kind:"web",platform,contentType,host,title};
+  }catch{return null;}
 }
 function durationLabel(n?:number|null){if(n==null)return "";const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`;}
 
@@ -98,7 +157,7 @@ export default function Home(){
     const catOk=filterCategory==="all"||v.categoryId===filterCategory;
     const subOk=filterSubcategory==="all"||v.subcategoryId===filterSubcategory;
     const q=search.toLowerCase();
-    return catOk&&subOk&&(!q||`${v.title} ${v.channel||""} ${v.id}`.toLowerCase().includes(q));
+    return catOk&&subOk&&(!q||`${v.title} ${v.channel||""} ${v.id} ${v.url} ${v.platform||""} ${v.contentType||""}`.toLowerCase().includes(q));
   }),[videos,filterCategory,filterSubcategory,search]);
   const subOptions=currentCategory?.subcategories||[];
 
@@ -159,37 +218,56 @@ export default function Home(){
         const requestedSubcategory=row.subcategory?.trim() ||
           (row.category?.trim() ? "" : currentCategory?.subcategories.find(s=>s.id===subcategoryId)?.name || "");
 
-        const videoId=canonicalVideoId(url);
-        if(!videoId){
-          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – INVALID URL",reason:"Not a supported HTTPS YouTube URL.",videoTitle:"",processedAt:new Date().toISOString()});
+        const linkInfo=identifyLink(url);
+        if(!linkInfo){
+          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – INVALID URL",reason:"Enter a valid public http:// or https:// website URL.",videoTitle:"",processedAt:new Date().toISOString()});
           continue;
         }
-        if(knownIds.has(videoId)){
-          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – DUPLICATE",reason:"This video is already in your library.",videoTitle:"",processedAt:new Date().toISOString()});
+        const identity=linkInfo.id;
+        if(knownIds.has(identity)){
+          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – DUPLICATE",reason:"This link is already in your library.",videoTitle:"",processedAt:new Date().toISOString()});
           continue;
         }
-        if(seenInFile.has(videoId)){
-          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – DUPLICATE",reason:"This video appeared earlier in the same import file.",videoTitle:"",processedAt:new Date().toISOString()});
+        if(seenInFile.has(identity)){
+          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – DUPLICATE",reason:"This link appeared earlier in the same import file.",videoTitle:"",processedAt:new Date().toISOString()});
           continue;
         }
-        seenInFile.add(videoId);
+        seenInFile.add(identity);
 
         setNotice(`Processing ${index+1} of ${rows.length}: ${url}`);
         try{
-          const response=await fetch("/api/extract",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({urls:[url]})
-          });
-          let data:any;
-          try{data=await response.json();}catch{data=null;}
-          if(!response.ok) throw new Error(data?.error || `Server returned HTTP ${response.status}.`);
-          const result:ExtractResult|undefined=data?.results?.[0];
-          if(!result?.video) throw new Error(result?.error || "No video metadata was returned.");
+          let extractedVideo:Omit<Video,"categoryId"|"subcategoryId"|"addedAt">;
+          if(linkInfo.kind==="youtube"){
+            const response=await fetch("/api/extract",{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({urls:[linkInfo.url]})
+            });
+            let data:any;
+            try{data=await response.json();}catch{data=null;}
+            if(!response.ok) throw new Error(data?.error || `Server returned HTTP ${response.status}.`);
+            const result:ExtractResult|undefined=data?.results?.[0];
+            if(!result?.video) throw new Error(result?.error || "No YouTube metadata was returned.");
+            extractedVideo={...result.video,contentType:"YouTube video",platform:"YouTube"};
+          }else{
+            // Save general URLs as bookmarks even when the source blocks metadata scraping.
+            // This keeps Facebook/Instagram and login-protected links usable in the library.
+            extractedVideo={
+              id:linkInfo.id,
+              title:linkInfo.title,
+              thumbnail:"",
+              url:linkInfo.url,
+              channel:linkInfo.host,
+              duration:null,
+              uploadDate:"",
+              contentType:linkInfo.contentType,
+              platform:linkInfo.platform
+            };
+          }
 
-          const id=result.video.id;
+          const id=extractedVideo.id;
           if(knownIds.has(id)){
-            addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – DUPLICATE",reason:"The extracted video ID is already in your library.",videoTitle:result.video.title||"",processedAt:new Date().toISOString()});
+            addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – DUPLICATE",reason:"This link is already in your library.",videoTitle:extractedVideo.title||"",processedAt:new Date().toISOString()});
             continue;
           }
 
@@ -207,7 +285,7 @@ export default function Home(){
           if(!sub) sub=cat.subcategories[0];
 
           const newVideo:Video={
-            ...result.video,
+            ...extractedVideo,
             categoryId:cat.id,
             subcategoryId:sub?.id||"",
             addedAt:new Date().toISOString()
@@ -219,9 +297,12 @@ export default function Home(){
           knownIds.add(id);
           setCategories([...workingCategories]);
           setVideos(workingVideos);
-          addLog({url,category:cat.name,subcategory:sub?.name||"",status:"ADDED",reason:"Video metadata extracted and saved to this browser's library.",videoTitle:newVideo.title,processedAt:new Date().toISOString()});
+          const reason=linkInfo.kind==="youtube"
+            ?"YouTube metadata retrieved and video saved to this browser's library."
+            :"Link saved to this browser's library. Website preview metadata was not required.";
+          addLog({url:linkInfo.url,category:cat.name,subcategory:sub?.name||"",status:"ADDED",reason,videoTitle:newVideo.title,processedAt:new Date().toISOString()});
         }catch(error){
-          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – EXTRACTION FAILED",reason:error instanceof Error?error.message:"Extraction failed.",videoTitle:"",processedAt:new Date().toISOString()});
+          addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – EXTRACTION FAILED",reason:error instanceof Error?error.message:"Link could not be saved.",videoTitle:"",processedAt:new Date().toISOString()});
         }
       }
 
@@ -251,14 +332,14 @@ export default function Home(){
     setSelectedFile(null);
   }
   function downloadTemplate(){
-    const csv="URL,Category,Subcategory\nhttps://www.youtube.com/watch?v=VIDEO_ID,Food,Recipes\nhttps://youtu.be/VIDEO_ID,DIY,Home Projects\n";
-    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="youtube-import-template.csv";a.click();URL.revokeObjectURL(a.href);
+    const csv="URL,Category,Subcategory\nhttps://www.youtube.com/watch?v=VIDEO_ID,Video,To Watch\nhttps://www.instagram.com/p/EXAMPLE/,Social Media,Instagram\nhttps://example.com/article,Articles,To Read\n";
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="content-links-import-template.csv";a.click();URL.revokeObjectURL(a.href);
   }
   function exportCsv(){
-    const rows=[["Video ID","Title","Channel","Thumbnail URL","Video URL","Category","Subcategory","Duration seconds","Upload date"],
-      ...videos.map(v=>[v.id,v.title,v.channel||"",v.thumbnail,v.url,categories.find(c=>c.id===v.categoryId)?.name||"",categories.find(c=>c.id===v.categoryId)?.subcategories.find(s=>s.id===v.subcategoryId)?.name||"",v.duration??"",v.uploadDate||""])];
+    const rows=[["ID","Content Type","Platform","Title","Source / Channel","Thumbnail URL","URL","Category","Subcategory","Duration seconds","Publication date","Added At"],
+      ...videos.map(v=>[v.id,v.contentType||"YouTube video",v.platform||"YouTube",v.title,v.channel||"",v.thumbnail,v.url,categories.find(c=>c.id===v.categoryId)?.name||"",categories.find(c=>c.id===v.categoryId)?.subcategories.find(s=>s.id===v.subcategoryId)?.name||"",v.duration??"",v.uploadDate||"",v.addedAt])];
     const csv=rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(",")).join("\r\n");
-    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="youtube-library.csv";a.click();URL.revokeObjectURL(a.href);
+    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="content-library.csv";a.click();URL.revokeObjectURL(a.href);
   }
   function exportImportResults(){
     const rows=[
@@ -267,7 +348,7 @@ export default function Home(){
     ];
     const csv=rows.map(r=>r.map(x=>`"${String(x??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
     const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="youtube-import-results.csv";a.click();URL.revokeObjectURL(a.href);
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="content-import-results.csv";a.click();URL.revokeObjectURL(a.href);
   }
   function toggleVideoSelection(id:string, checked:boolean){
     setSelectedVideoIds(current=>checked
@@ -311,19 +392,19 @@ export default function Home(){
   }
 
   return <main className="shell">
-    <header className="topbar"><div><div className="eyebrow">PERSONAL VIDEO LIBRARY</div><h1>YouTube content organiser</h1><p>Collect videos, sort them into categories and subcategories, and keep duplicates out.</p></div><div className="countPill">{videos.length} saved videos</div></header>
+    <header className="topbar"><div><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>Content organiser</h1><p>Save YouTube videos, articles, social media posts and useful website links in one organised library.</p></div><div className="countPill">{videos.length} saved links</div></header>
 
     <section className="panel importPanel">
-      <div className="sectionTitle"><div><h2>Import videos</h2><p>Paste links or upload a CSV. Existing videos are never overwritten.</p></div></div>
+      <div className="sectionTitle"><div><h2>Import links</h2><p>Save YouTube videos, articles, Facebook, Instagram and other website links. Existing links are never overwritten.</p></div></div>
       <div className="importGrid">
         <form onSubmit={submitManual} className="pasteBox">
-          <label htmlFor="url-list">Paste YouTube links</label>
-          <textarea id="url-list" rows={4} value={urlText} onChange={e=>setUrlText(e.target.value)} placeholder={"One URL per line\nhttps://www.youtube.com/watch?v=..."} />
+          <label htmlFor="url-list">Paste links</label>
+          <textarea id="url-list" rows={4} value={urlText} onChange={e=>setUrlText(e.target.value)} placeholder={"One URL per line\nhttps://www.youtube.com/watch?v=...\nhttps://www.instagram.com/p/...\nhttps://example.com/article"} />
           <button disabled={loading} type="submit">{loading?"Importing…":"Import pasted links"}</button>
         </form>
         <div className="csvBox">
           <label>Upload CSV file</label>
-          <div className="uploadDrop"><div className="uploadIcon">⇧</div><strong>{selectedFile?selectedFile.name:"Choose a CSV file"}</strong><span>CSV columns: URL, Category, Subcategory</span>
+          <div className="uploadDrop"><div className="uploadIcon">⇧</div><strong>{selectedFile?selectedFile.name:"Choose a CSV file"}</strong><span>CSV columns: URL, Category, Subcategory (all website links accepted)</span>
             <button type="button" className="outline" disabled={loading} onClick={()=>fileRef.current?.click()}>Browse CSV</button>
             <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={handleFile}/>
           </div>
@@ -364,9 +445,9 @@ export default function Home(){
       </aside>
 
       <section className="library">
-        <div className="libraryHead"><div><h2>Your videos</h2><p>Search, filter and organise extracted videos.</p></div><button className="outline" onClick={exportCsv} disabled={!videos.length}>Export library CSV</button></div>
+        <div className="libraryHead"><div><h2>Your saved content</h2><p>Search, filter and organise videos, articles and other links.</p></div><button className="outline" onClick={exportCsv} disabled={!videos.length}>Export library CSV</button></div>
         <div className="filters">
-          <input aria-label="Search videos" placeholder="Search titles, channels or IDs…" value={search} onChange={e=>setSearch(e.target.value)}/>
+          <input aria-label="Search saved content" placeholder="Search titles, websites, platforms or URLs…" value={search} onChange={e=>setSearch(e.target.value)}/>
           <select aria-label="Filter category" value={filterCategory} onChange={e=>{setFilterCategory(e.target.value);setFilterSubcategory("all");}}>
             <option value="all">All categories</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -386,11 +467,14 @@ export default function Home(){
             Delete selected{selectedVideoIds.length?` (${selectedVideoIds.length})`:""}
           </button>
         </div>
-        {filtered.length===0?<div className="empty"><div className="emptyIcon">▧</div><h3>No videos to show</h3><p>Import YouTube links above to start building your library.</p></div>:
+        {filtered.length===0?<div className="empty"><div className="emptyIcon">▧</div><h3>No videos to show</h3><p>Import YouTube videos, articles or website links above to start building your library.</p></div>:
           <div className="videoGrid">{filtered.map(v=>{
             const cat=categories.find(c=>c.id===v.categoryId);const sub=cat?.subcategories.find(s=>s.id===v.subcategoryId);
             return <article className="videoCard" key={v.id}>
-              <a className="thumb" href={v.url} target="_blank" rel="noreferrer"><img src={v.thumbnail} alt={v.title}/>{v.duration!=null&&<span>{durationLabel(v.duration)}</span>}</a>
+              <a className={`thumb ${v.thumbnail?"":"thumbPlaceholder"}`} href={v.url} target="_blank" rel="noreferrer">
+                {v.thumbnail?<img src={v.thumbnail} alt={v.title}/>:<div className="linkPreview"><strong>{v.platform||"Website"}</strong><span>{v.contentType||"Saved link"}</span><small>{v.url}</small></div>}
+                {v.duration!=null&&<span>{durationLabel(v.duration)}</span>}
+              </a>
               <div className="videoBody">
                 <label className="videoSelectLabel">
                   <input type="checkbox" checked={selectedVideoIds.includes(v.id)} onChange={e=>toggleVideoSelection(v.id,e.target.checked)} aria-label={`Select ${v.title}`}/>
@@ -398,13 +482,13 @@ export default function Home(){
                 </label>
                 <h3><a href={v.url} target="_blank" rel="noreferrer">{v.title}</a></h3><p className="channel">{v.channel||"Unknown channel"}</p><div className="tags"><span>{cat?.name||"Uncategorised"}</span>{sub&&<span>{sub.name}</span>}</div>
                 <label className="moveLabel">Move to category</label><select value={v.categoryId} onChange={e=>changeVideoCategory(v.id,e.target.value)}>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                <div className="cardFoot"><small>Video ID: {v.id}</small><button className="removeButton" onClick={()=>deleteVideo(v.id)} title="Remove from library">Remove</button></div>
+                <div className="cardFoot"><small>{v.contentType||"Saved link"} · {v.platform||"Website"}</small><button className="removeButton" onClick={()=>deleteVideo(v.id)} title="Remove from library">Remove</button></div>
               </div>
             </article>;
           })}</div>
         }
       </section>
     </div>
-    <footer>Library data is stored in this browser on this device. Back up regularly by exporting the library CSV.</footer>
+    <footer>Library data is stored in this browser on this device. Back up regularly by exporting the content library CSV.</footer>
   </main>;
 }
