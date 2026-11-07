@@ -1,6 +1,6 @@
 # Netlify setup — YouTube metadata
 
-This version uses the official YouTube Data API for video metadata. It no longer tries to launch the `yt-dlp` executable, which is not installed in the Netlify serverless runtime by default.
+This version uses the official YouTube Data API for YouTube video metadata and a best-effort metadata endpoint for other public websites. The non-YouTube endpoint checks Open Graph/page metadata and selected public oEmbed providers. It does not require another API key, and links remain saveable if metadata is blocked.
 
 ## 1. Create a YouTube Data API key
 
@@ -25,7 +25,7 @@ Do not use `NEXT_PUBLIC_YOUTUBE_API_KEY`; that prefix would expose the key to br
 
 ## 3. Deploy
 
-Deploy this updated project to Netlify. The API route remains `/api/extract`, so the existing sequential importer and CSV reporting UI do not need to change.
+Deploy this updated project to Netlify. The YouTube API route remains `/api/extract`; non-YouTube previews use `/api/metadata`. Both are Next.js server routes and are compatible with Netlify Next.js deployment. The existing sequential importer and CSV reporting UI are preserved.
 
 ## Metadata differences and limitations
 
@@ -33,3 +33,13 @@ Deploy this updated project to Netlify. The API route remains `/api/extract`, so
 - The API's `publishedAt` field is a publication date; it is not guaranteed to be the original upload date for every video.
 - Private, deleted, or otherwise unavailable videos may not be returned and will be recorded as extraction failures in the import CSV.
 - `videos.list` costs 1 quota unit per request. The sequential importer makes one metadata request per new URL, so 96 URLs typically use about 96 units (excluding retries and other requests).
+
+
+## Non-YouTube metadata behavior
+
+- Public Open Graph/Twitter card metadata and HTML page titles are used where available.
+- TikTok, Reddit, and X/Twitter also have best-effort oEmbed lookups.
+- Facebook and Instagram commonly require Meta API credentials/permissions or block server-side preview access. This version does not bypass those restrictions; it saves the URL with a fallback card when metadata is unavailable.
+- LinkedIn and Pinterest previews depend on whether the public page exposes metadata to an unauthenticated request.
+- Metadata is best-effort, not guaranteed. Private, login-protected, deleted, rate-limited, or bot-protected content may return only a fallback title and no thumbnail.
+- The endpoint only fetches public HTTP/HTTPS destinations, validates DNS addresses, rejects private/reserved IP ranges, limits redirects and response size, and times out slow requests.

@@ -250,18 +250,28 @@ export default function Home(){
             if(!result?.video) throw new Error(result?.error || "No YouTube metadata was returned.");
             extractedVideo={...result.video,contentType:"YouTube video",platform:"YouTube"};
           }else{
-            // Save general URLs as bookmarks even when the source blocks metadata scraping.
-            // This keeps Facebook/Instagram and login-protected links usable in the library.
+            // Retrieve basic metadata where the platform exposes it. Metadata is best-effort:
+            // blocked/private pages still remain saveable as ordinary bookmarks.
+            let metadata:{title?:string;thumbnail?:string;platform?:string;contentType?:string}|null=null;
+            try{
+              const response=await fetch("/api/metadata",{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({url:linkInfo.url})
+              });
+              const data=await response.json().catch(()=>null);
+              if(response.ok && data?.metadata) metadata=data.metadata;
+            }catch{ /* Keep the fallback card if metadata lookup is unavailable. */ }
             extractedVideo={
               id:linkInfo.id,
-              title:linkInfo.title,
-              thumbnail:"",
+              title:metadata?.title?.trim() || linkInfo.title,
+              thumbnail:metadata?.thumbnail || "",
               url:linkInfo.url,
               channel:linkInfo.host,
               duration:null,
               uploadDate:"",
-              contentType:linkInfo.contentType,
-              platform:linkInfo.platform
+              contentType:metadata?.contentType || linkInfo.contentType,
+              platform:metadata?.platform || linkInfo.platform
             };
           }
 
@@ -297,9 +307,12 @@ export default function Home(){
           knownIds.add(id);
           setCategories([...workingCategories]);
           setVideos(workingVideos);
+          const hasPreview=Boolean(newVideo.thumbnail) || (newVideo.title && newVideo.title!==linkInfo.title);
           const reason=linkInfo.kind==="youtube"
             ?"YouTube metadata retrieved and video saved to this browser's library."
-            :"Link saved to this browser's library. Website preview metadata was not required.";
+            :hasPreview
+              ?"Basic page metadata retrieved where available; link saved to this browser's library."
+              :"Metadata was unavailable or restricted; the link was saved with a fallback preview.";
           addLog({url:linkInfo.url,category:cat.name,subcategory:sub?.name||"",status:"ADDED",reason,videoTitle:newVideo.title,processedAt:new Date().toISOString()});
         }catch(error){
           addLog({url,category:requestedCategory,subcategory:requestedSubcategory,status:"SKIPPED – EXTRACTION FAILED",reason:error instanceof Error?error.message:"Link could not be saved.",videoTitle:"",processedAt:new Date().toISOString()});

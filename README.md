@@ -1,7 +1,8 @@
 # Content Organiser
 
-A personal web application for collecting YouTube videos, extracting
-their metadata, and organising them into custom categories and
+A personal web application for collecting links from YouTube, social
+platforms, articles and other websites, retrieving basic metadata where
+available, and organising content into custom categories and
 subcategories. The app supports individual URL imports, CSV imports,
 duplicate detection, live import progress, CSV reports, search and
 filtering, and bulk deletion.
@@ -227,8 +228,8 @@ Each processed row receives one of the following statuses:
   -----------------------------------------------------------------------
   Status                              Meaning
   ----------------------------------- -----------------------------------
-  `ADDED`                             Metadata was retrieved and the
-                                      video was saved to this browser's
+  `ADDED`                             The link and any available metadata
+                                      were saved to this browser's
                                       library.
 
   `SKIPPED – DUPLICATE`               The video already exists in the
@@ -236,12 +237,12 @@ Each processed row receives one of the following statuses:
                                       appeared earlier in the current
                                       import.
 
-  `SKIPPED – INVALID URL`             The URL is not a supported HTTPS
-                                      YouTube video URL.
+  `SKIPPED – INVALID URL`             The URL is not a valid public HTTP
+                                      or HTTPS website URL.
 
-  `SKIPPED – EXTRACTION FAILED`       The metadata lookup failed or
-                                      YouTube did not return usable video
-                                      metadata.
+  `SKIPPED – EXTRACTION FAILED`       A required extraction step failed.
+                                      Non-YouTube metadata failures use a
+                                      fallback card and do not block saving.
   -----------------------------------------------------------------------
 
 The import-results CSV contains:
@@ -322,10 +323,10 @@ import/migration process.
 4.  Ensure the variable is available to the deployed server-side
     function/runtime.
 5.  Trigger a new deployment after adding or changing the variable.
-6.  Test the deployed app with one public YouTube video URL before
+6.  Test the deployed app with a public YouTube video URL and a few non-YouTube links before
     importing a larger CSV.
 
-The extraction endpoint is `/api/extract`. The key is read on the server
+The YouTube extraction endpoint is `/api/extract`; the non-YouTube metadata endpoint is `/api/metadata`. The YouTube key is read on the server
 from `process.env.YOUTUBE_API_KEY`.
 
 See [`NETLIFY_SETUP.md`](./NETLIFY_SETUP.md) for the deployment-specific
@@ -371,6 +372,20 @@ field. The route validates supported HTTPS YouTube URLs and accepts up
 to 100 URL strings per request. The frontend importer processes URLs
 sequentially; the route also iterates through submitted URLs
 sequentially.
+
+### `POST /api/metadata`
+
+Request body:
+
+```json
+{ "url": "https://example.com/article" }
+```
+
+Returns a best-effort `metadata` object containing `title`, `thumbnail`,
+`platform`, and `contentType`. It checks selected oEmbed providers and public
+Open Graph/Twitter card or HTML title metadata. No API key is required.
+If metadata is blocked or unavailable, the importer still saves the URL using
+its fallback title and platform information.
 
 ## Known limitations
 
@@ -443,6 +458,11 @@ to the same video are treated as the same video.
 
 ### Non-YouTube links
 
-Non-YouTube URLs are saved as bookmarks. The organiser identifies common platforms such as Facebook, Instagram, TikTok, Pinterest, LinkedIn, X/Twitter, Reddit, Threads, Telegram and YouTube channel/playlist pages. Other valid website links are classified as articles or general website links based on their domain and URL path.
+The organiser identifies common platforms such as Facebook, Instagram, TikTok, Pinterest, LinkedIn, X/Twitter, Reddit, Threads, Telegram and YouTube channel/playlist pages. Other valid website links are classified as articles or general website links based on their domain and URL path. For non-YouTube links, the app attempts to retrieve a title and thumbnail from public Open Graph/Twitter card metadata and selected oEmbed providers. If metadata is unavailable, it still saves the URL with a readable fallback title and platform preview card. It does not bypass private/login-protected pages or platform restrictions.
 
-For these links, the organiser creates a readable fallback title from the URL and displays a platform preview card. It does not automatically scrape the article text, social post content, images or author information. The fallback title is generated from the URL path or domain, so users may want to rename or edit it in a future enhancement. A Facebook or Instagram URL can therefore be saved successfully even if the content itself is private, login-protected or unavailable to automated tools.
+
+## Basic metadata extraction
+
+For non-YouTube URLs, `/api/metadata` attempts to retrieve a title and thumbnail using public Open Graph/Twitter card metadata and selected oEmbed providers (TikTok, Reddit, and X/Twitter). It also identifies the platform and basic content type. This is best-effort and does not bypass login walls, private content, bot protections, or platform API permissions. Facebook and Instagram commonly restrict automated preview access; their links remain saveable even when no title or thumbnail can be retrieved.
+
+The metadata endpoint validates public HTTP/HTTPS destinations, checks DNS results against private/reserved IP ranges, pins the request to a validated public address, limits redirects, applies a timeout, and caps downloaded HTML size. No additional API key is required for this best-effort metadata feature. YouTube still requires `YOUTUBE_API_KEY` for its official video metadata lookup.
