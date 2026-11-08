@@ -66,3 +66,28 @@
 .videoCard.isSelected{border-color:#07877e;box-shadow:0 0 0 2px #07877e20}
 .selectionMarquee{position:absolute;z-index:5;pointer-events:none;border:1px solid #07877e;background:#07877e18;border-radius:3px}
 @media(max-width:620px){.librarySubcategoryStrip{flex-direction:column;gap:5px}.stripLabel{padding:0}.stripTiles{width:100%}}
+
+
+/* Manual AdSense placement: separated from selection, deletion and item controls. */
+.adPlacement{
+  display:block;
+  width:100%;
+  min-height:90px;
+  margin:0 0 16px;
+  padding:10px 12px;
+  overflow:hidden;
+  background:#fff;
+  border:1px solid #e1e9e8;
+  border-radius:10px;
+}
+.adLabel{
+  display:block;
+  margin-bottom:7px;
+  color:#899494;
+  font-size:9px;
+  line-height:1;
+  letter-spacing:.12em;
+  text-align:center;
+  text-transform:uppercase;
+}
+.adPlacement .adsbygoogle{width:100%;min-height:70px}

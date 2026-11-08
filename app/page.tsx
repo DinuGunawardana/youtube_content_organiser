@@ -1,6 +1,7 @@
  "use client";
 
 import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import AdSenseUnit from "./AdSenseUnit";
 
 type Category = { id: string; name: string; subcategories: {id: string; name: string}[] };
 type Video = {
@@ -549,6 +550,12 @@ export default function Home(){
 
         </div>
         {filterCategory!=="all"&&<div className="librarySubcategoryStrip"><span className="stripLabel">{categories.find(c=>c.id===filterCategory)?.name||"Category"}</span><div className="stripTiles"><button type="button" className={`stripTile ${filterSubcategory==="all"?"active":""}`} onClick={()=>setFilterSubcategory("all")}>All</button>{(categories.find(c=>c.id===filterCategory)?.subcategories||[]).map(sub=><button type="button" key={sub.id} className={`stripTile ${filterSubcategory===sub.id?"active":""}`} onClick={()=>setFilterSubcategory(sub.id)}>{sub.name}</button>)}</div></div>}
+        {process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID && process.env.NEXT_PUBLIC_ADSENSE_LIBRARY_SLOT_ID && (
+          <AdSenseUnit
+            clientId={process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID}
+            slotId={process.env.NEXT_PUBLIC_ADSENSE_LIBRARY_SLOT_ID}
+          />
+        )}
         <div className="bulkActions">
           <div className="bulkSelectionInfo">
             <strong>{selectedVideoIds.length} selected</strong>

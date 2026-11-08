@@ -43,3 +43,20 @@ Deploy this updated project to Netlify. The YouTube API route remains `/api/extr
 - LinkedIn and Pinterest previews depend on whether the public page exposes metadata to an unauthenticated request.
 - Metadata is best-effort, not guaranteed. Private, login-protected, deleted, rate-limited, or bot-protected content may return only a fallback title and no thumbnail.
 - The endpoint only fetches public HTTP/HTTPS destinations, validates DNS addresses, rejects private/reserved IP ranges, limits redirects and response size, and times out slow requests.
+
+
+## 4. Optional: controlled Google AdSense placement
+
+This project is configured for **one manual responsive display ad** in the content library, below the search/category filters and above the bulk-selection controls. It is not using Auto Ads. The placement is intentionally kept away from checkboxes, category actions, and Remove/Delete buttons.
+
+1. In AdSense, add this website and complete Google's site review/approval process. Having an AdSense account does not automatically mean this particular website is approved to serve ads.
+2. In AdSense, create a **Display** ad unit and copy its publisher ID (`ca-pub-...`) and the ad unit's slot ID.
+3. For local testing, copy `.env.example` to `.env.local` and replace the example values:
+   - `NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-...`
+   - `NEXT_PUBLIC_ADSENSE_LIBRARY_SLOT_ID=...`
+4. In Netlify, open **Site configuration → Environment variables** and add those same two variable names with your real values.
+5. Trigger a new deploy. `NEXT_PUBLIC_` values are included at build time, so an existing deployment will not pick up changes until rebuilt.
+
+If either value is missing, the ad component and AdSense loader are omitted, and the rest of the app continues to work. Ad blockers, network restrictions, or AdSense review/serving status can also prevent an ad from appearing; that should not affect saved content.
+
+**Important:** Do not publish the example IDs. Add an accurate privacy/cookie disclosure for advertising technologies and implement any consent requirements that apply to your visitors and target regions. Follow the current AdSense account guidance for any `ads.txt` requirement. Never place ads so they resemble navigation or library controls.
