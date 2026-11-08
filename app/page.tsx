@@ -1,6 +1,6 @@
  "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Category = { id: string; name: string; subcategories: {id: string; name: string}[] };
 type Video = {
@@ -137,6 +137,12 @@ export default function Home(){
   const [filterSubcategory,setFilterSubcategory]=useState("all");
   const [search,setSearch]=useState("");
   const [selectedVideoIds,setSelectedVideoIds]=useState<string[]>([]);
+  const [editingSubcategoryId,setEditingSubcategoryId]=useState<string|null>(null);
+  const [editingSubcategoryName,setEditingSubcategoryName]=useState("");
+  const [dragSelection,setDragSelection]=useState<{left:number;top:number;width:number;height:number}|null>(null);
+  const gridRef=useRef<HTMLDivElement>(null);
+  const dragRef=useRef<{pointerId:number;startX:number;startY:number;currentX:number;currentY:number;additive:boolean;active:boolean}|null>(null);
+  const suppressCardClickRef=useRef(false);
   const fileRef=useRef<HTMLInputElement>(null);
 
   useEffect(()=>{
@@ -161,7 +167,43 @@ export default function Home(){
   }),[videos,filterCategory,filterSubcategory,search]);
   const subOptions=currentCategory?.subcategories||[];
 
-  function chooseCategory(id:string){setCategoryId(id);const c=categories.find(x=>x.id===id);setSubcategoryId(c?.subcategories[0]?.id||"");}
+  function chooseCategory(id:string){
+    setCategoryId(id);
+    const c=categories.find(x=>x.id===id);
+    setSubcategoryId("");
+    setFilterCategory(id);
+    setFilterSubcategory("all");
+    setSelectedVideoIds([]);
+  }
+  function chooseSubcategory(id:string){
+    setSubcategoryId(id);
+    setFilterCategory(currentCategory.id);
+    setFilterSubcategory(id||"all");
+    setSelectedVideoIds([]);
+  }
+  function beginEditSubcategory(sub:{id:string;name:string}){
+    setEditingSubcategoryId(sub.id);setEditingSubcategoryName(sub.name);
+  }
+  function saveSubcategoryEdit(){
+    if(!currentCategory||!editingSubcategoryId)return;
+    const name=editingSubcategoryName.trim();
+    if(!name){setNotice("Subcategory name cannot be empty.");return;}
+    if(currentCategory.subcategories.some(s=>s.id!==editingSubcategoryId&&s.name.toLowerCase()===name.toLowerCase())){setNotice("That subcategory name already exists in this category.");return;}
+    setCategories(prev=>prev.map(c=>c.id===currentCategory.id?{...c,subcategories:c.subcategories.map(s=>s.id===editingSubcategoryId?{...s,name}:s)}:c));
+    setEditingSubcategoryId(null);setEditingSubcategoryName("");setNotice(`Subcategory renamed to “${name}”.`);
+  }
+  function removeSubcategory(id:string){
+    if(!currentCategory)return;
+    const sub=currentCategory.subcategories.find(s=>s.id===id);if(!sub)return;
+    const count=videos.filter(v=>v.categoryId===currentCategory.id&&v.subcategoryId===id).length;
+    const message=count?`Delete “${sub.name}”? ${count} saved item(s) will remain in ${currentCategory.name} but become uncategorised within it.`:`Delete subcategory “${sub.name}”?`;
+    if(!confirm(message))return;
+    setCategories(prev=>prev.map(c=>c.id===currentCategory.id?{...c,subcategories:c.subcategories.filter(s=>s.id!==id)}:c));
+    setVideos(prev=>prev.map(v=>v.categoryId===currentCategory.id&&v.subcategoryId===id?{...v,subcategoryId:""}:v));
+    if(subcategoryId===id)setSubcategoryId("");
+    if(filterSubcategory===id)setFilterSubcategory("all");
+    setEditingSubcategoryId(null);setNotice(`Subcategory “${sub.name}” deleted. Saved content was kept.`);
+  }
   function addCategory(){
     const name=newCategory.trim();if(!name)return;
     if(categories.some(c=>c.name.toLowerCase()===name.toLowerCase())){setNotice("That category already exists.");return;}
@@ -376,6 +418,41 @@ export default function Home(){
       : [...new Set([...current,...visibleIds])]);
   }
   function clearVideoSelection(){setSelectedVideoIds([]);}
+  function selectionRect(a:{startX:number;startY:number;currentX:number;currentY:number}){
+    return {left:Math.min(a.startX,a.currentX),top:Math.min(a.startY,a.currentY),width:Math.abs(a.currentX-a.startX),height:Math.abs(a.currentY-a.startY)};
+  }
+  function handleGridPointerDown(e:ReactPointerEvent<HTMLDivElement>){
+    if(e.pointerType!=="mouse"||e.button!==0)return;
+    const target=e.target as HTMLElement;
+    if(target.closest("button,input,select,textarea"))return;
+    const bounds=e.currentTarget.getBoundingClientRect();
+    const x=e.clientX-bounds.left,y=e.clientY-bounds.top;
+    dragRef.current={pointerId:e.pointerId,startX:x,startY:y,currentX:x,currentY:y,additive:e.shiftKey||e.ctrlKey||e.metaKey,active:false};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function handleGridPointerMove(e:ReactPointerEvent<HTMLDivElement>){
+    const drag=dragRef.current;if(!drag||drag.pointerId!==e.pointerId)return;
+    const bounds=e.currentTarget.getBoundingClientRect();
+    drag.currentX=e.clientX-bounds.left;drag.currentY=e.clientY-bounds.top;
+    const moved=Math.hypot(drag.currentX-drag.startX,drag.currentY-drag.startY)>5;
+    if(!moved)return;
+    drag.active=true;suppressCardClickRef.current=true;
+    const rect=selectionRect(drag);setDragSelection(rect);
+    const marquee={left:rect.left,top:rect.top,right:rect.left+rect.width,bottom:rect.top+rect.height};
+    const hits=Array.from(e.currentTarget.querySelectorAll<HTMLElement>("[data-video-id]")).filter(card=>{
+      const r=card.getBoundingClientRect();const left=r.left-bounds.left,top=r.top-bounds.top;
+      return left<marquee.right&&left+r.width>marquee.left&&top<marquee.bottom&&top+r.height>marquee.top;
+    }).map(card=>card.dataset.videoId!).filter(Boolean);
+    setSelectedVideoIds(current=>drag.additive?[...new Set([...current,...hits])]:hits);
+  }
+  function handleGridPointerUp(e:ReactPointerEvent<HTMLDivElement>){
+    const drag=dragRef.current;if(!drag||drag.pointerId!==e.pointerId)return;
+    if(drag.active)suppressCardClickRef.current=true;
+    dragRef.current=null;setDragSelection(null);
+  }
+  function handleGridClickCapture(e:ReactMouseEvent<HTMLDivElement>){
+    if(suppressCardClickRef.current){e.preventDefault();e.stopPropagation();suppressCardClickRef.current=false;}
+  }
   function deleteSelectedVideos(){
     const idsToDelete=new Set(selectedVideoIds);
     const count=videos.filter(v=>idsToDelete.has(v.id)).length;
@@ -448,10 +525,15 @@ export default function Home(){
         <select id="active-category" value={categoryId} onChange={e=>chooseCategory(e.target.value)}>
           {categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <label htmlFor="active-subcategory">Subcategory</label>
-        <select id="active-subcategory" value={subcategoryId} onChange={e=>setSubcategoryId(e.target.value)}>
-          <option value="">No subcategory</option>{subOptions.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        <div className="subCategoryManager">
+          <div className="subCategoryHeading"><label>Subcategories in {currentCategory?.name}</label><span>{subOptions.length}</span></div>
+          <div className="subCategoryTiles" role="group" aria-label={`${currentCategory?.name} subcategories`}>
+            <button type="button" className={`subCategoryTile ${!subcategoryId?"active":""}`} onClick={()=>chooseSubcategory("")}>All content</button>
+            {subOptions.map(sub=><button type="button" key={sub.id} className={`subCategoryTile ${subcategoryId===sub.id?"active":""}`} onClick={()=>chooseSubcategory(sub.id)}>{sub.name}<small>{videos.filter(v=>v.categoryId===currentCategory.id&&v.subcategoryId===sub.id).length}</small></button>)}
+          </div>
+          {editingSubcategoryId&&<div className="editSubcategory"><input aria-label="Edit subcategory name" value={editingSubcategoryName} onChange={e=>setEditingSubcategoryName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveSubcategoryEdit();if(e.key==="Escape")setEditingSubcategoryId(null);}}/><button type="button" onClick={saveSubcategoryEdit}>Save</button><button type="button" className="cancelEdit" onClick={()=>setEditingSubcategoryId(null)}>Cancel</button></div>}
+          <div className="subcategoryEditList">{subOptions.map(sub=><div className="subcategoryEditRow" key={sub.id}><span>{sub.name}</span><button type="button" className="miniAction" onClick={()=>beginEditSubcategory(sub)} aria-label={`Rename ${sub.name}`}>Edit</button><button type="button" className="miniDanger" onClick={()=>removeSubcategory(sub.id)} aria-label={`Delete ${sub.name}`}>Delete</button></div>)}</div>
+        </div>
         <div className="addGroup"><label htmlFor="new-cat">Add category</label><div className="inlineAdd"><input id="new-cat" value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="e.g. Gardening"/><button onClick={addCategory} type="button">Add</button></div></div>
         <div className="addGroup"><label htmlFor="new-sub">Add subcategory</label><div className="inlineAdd"><input id="new-sub" value={newSubcategory} onChange={e=>setNewSubcategory(e.target.value)} placeholder="e.g. Indoor plants"/><button onClick={addSubcategory} type="button" disabled={!currentCategory}>Add</button></div></div>
         <div className="categoryList"><strong>Categories</strong>{categories.map(c=><div className="categoryRow" key={c.id}><span>{c.name}</span><span className="muted">{videos.filter(v=>v.categoryId===c.id).length}</span></div>)}</div>
@@ -464,10 +546,9 @@ export default function Home(){
           <select aria-label="Filter category" value={filterCategory} onChange={e=>{setFilterCategory(e.target.value);setFilterSubcategory("all");}}>
             <option value="all">All categories</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select aria-label="Filter subcategory" value={filterSubcategory} onChange={e=>setFilterSubcategory(e.target.value)}>
-            <option value="all">All subcategories</option>{categories.filter(c=>filterCategory==="all"||c.id===filterCategory).flatMap(c=>c.subcategories.map(s=><option key={`${c.id}-${s.id}`} value={s.id}>{c.name} / {s.name}</option>))}
-          </select>
+
         </div>
+        {filterCategory!=="all"&&<div className="librarySubcategoryStrip"><span className="stripLabel">{categories.find(c=>c.id===filterCategory)?.name||"Category"}</span><div className="stripTiles"><button type="button" className={`stripTile ${filterSubcategory==="all"?"active":""}`} onClick={()=>setFilterSubcategory("all")}>All</button>{(categories.find(c=>c.id===filterCategory)?.subcategories||[]).map(sub=><button type="button" key={sub.id} className={`stripTile ${filterSubcategory===sub.id?"active":""}`} onClick={()=>setFilterSubcategory(sub.id)}>{sub.name}</button>)}</div></div>}
         <div className="bulkActions">
           <div className="bulkSelectionInfo">
             <strong>{selectedVideoIds.length} selected</strong>
@@ -481,9 +562,11 @@ export default function Home(){
           </button>
         </div>
         {filtered.length===0?<div className="empty"><div className="emptyIcon">▧</div><h3>No videos to show</h3><p>Import YouTube videos, articles or website links above to start building your library.</p></div>:
-          <div className="videoGrid">{filtered.map(v=>{
+          <div className="videoGrid" ref={gridRef} onPointerDown={handleGridPointerDown} onPointerMove={handleGridPointerMove} onPointerUp={handleGridPointerUp} onPointerCancel={handleGridPointerUp} onClickCapture={handleGridClickCapture}>
+            {dragSelection&&<div className="selectionMarquee" style={{left:dragSelection.left,top:dragSelection.top,width:dragSelection.width,height:dragSelection.height}}/>}
+            {filtered.map(v=>{
             const cat=categories.find(c=>c.id===v.categoryId);const sub=cat?.subcategories.find(s=>s.id===v.subcategoryId);
-            return <article className="videoCard" key={v.id}>
+            return <article className={`videoCard ${selectedVideoIds.includes(v.id)?"isSelected":""}`} data-video-id={v.id} key={v.id}>
               <a className={`thumb ${v.thumbnail?"":"thumbPlaceholder"}`} href={v.url} target="_blank" rel="noreferrer">
                 {v.thumbnail?<img src={v.thumbnail} alt={v.title}/>:<div className="linkPreview"><strong>{v.platform||"Website"}</strong><span>{v.contentType||"Saved link"}</span><small>{v.url}</small></div>}
                 {v.duration!=null&&<span>{durationLabel(v.duration)}</span>}
@@ -491,7 +574,7 @@ export default function Home(){
               <div className="videoBody">
                 <label className="videoSelectLabel">
                   <input type="checkbox" checked={selectedVideoIds.includes(v.id)} onChange={e=>toggleVideoSelection(v.id,e.target.checked)} aria-label={`Select ${v.title}`}/>
-                  Select video
+                  Select item
                 </label>
                 <h3><a href={v.url} target="_blank" rel="noreferrer">{v.title}</a></h3><p className="channel">{v.channel||"Unknown channel"}</p><div className="tags"><span>{cat?.name||"Uncategorised"}</span>{sub&&<span>{sub.name}</span>}</div>
                 <label className="moveLabel">Move to category</label><select value={v.categoryId} onChange={e=>changeVideoCategory(v.id,e.target.value)}>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>

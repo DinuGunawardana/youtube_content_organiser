@@ -466,3 +466,12 @@ The organiser identifies common platforms such as Facebook, Instagram, TikTok, P
 For non-YouTube URLs, `/api/metadata` attempts to retrieve a title and thumbnail using public Open Graph/Twitter card metadata and selected oEmbed providers (TikTok, Reddit, and X/Twitter). It also identifies the platform and basic content type. This is best-effort and does not bypass login walls, private content, bot protections, or platform API permissions. Facebook and Instagram commonly restrict automated preview access; their links remain saveable even when no title or thumbnail can be retrieved.
 
 The metadata endpoint validates public HTTP/HTTPS destinations, checks DNS results against private/reserved IP ranges, pins the request to a validated public address, limits redirects, applies a timeout, and caps downloaded HTML size. No additional API key is required for this best-effort metadata feature. YouTube still requires `YOUTUBE_API_KEY` for its official video metadata lookup.
+
+## Category navigation and bulk selection
+
+- Choose the main category from the category dropdown.
+- Subcategories are shown as horizontally scrollable tiles; select a tile to filter the library.
+- Rename a subcategory after content has been added. Renaming preserves the existing content assignments because each item references the subcategory ID.
+- Deleting a subcategory keeps its saved content in the parent category and clears only that subcategory assignment.
+- On desktop, click and drag across content cards to select multiple items. Hold Shift, Ctrl, or Cmd while dragging to add to the current selection. The checkbox and Select visible controls remain available as alternatives.
+- Use Delete selected to remove the selected items from this browser's library. This does not delete the original videos or posts from their platforms.
