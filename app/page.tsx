@@ -428,7 +428,7 @@ export default function Home(){
   function handleGridPointerDown(e:ReactPointerEvent<HTMLDivElement>){
     if(e.pointerType!=="mouse"||e.button!==0)return;
     const target=e.target as HTMLElement;
-    if(target.closest("button,input,select,textarea"))return;
+    if(target.closest("a,button,input,select,textarea"))return;
     const bounds=e.currentTarget.getBoundingClientRect();
     const x=e.clientX-bounds.left,y=e.clientY-bounds.top;
     dragRef.current={pointerId:e.pointerId,startX:x,startY:y,currentX:x,currentY:y,additive:e.shiftKey||e.ctrlKey||e.metaKey,active:false};
