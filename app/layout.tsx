@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 
-const adsenseClientId = process.env.NEXT_PUBLIC_ADSENSE_CLIENT_ID;
+// AdSense publisher IDs are public identifiers. Keeping the verification
+// tag and library URL explicit ensures they are present in the initial HTML.
+const adsenseClientId = "ca-pub-2741821782196575";
 
 export const metadata: Metadata = {
   title: "Content Organiser",
@@ -12,17 +14,20 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>
-        {children}
-        {adsenseClientId && (
-          <Script
-            async
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClientId}`}
-            crossOrigin="anonymous"
-            strategy="beforeInteractive"
-          />
-        )}
-      </body>
+      <head>
+        <meta
+          name="google-adsense-account"
+          content={adsenseClientId}
+        />
+        <Script
+          id="google-adsense-library"
+          async
+          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClientId}`}
+          crossOrigin="anonymous"
+          strategy="beforeInteractive"
+        />
+      </head>
+      <body>{children}</body>
     </html>
   );
 }
