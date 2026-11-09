@@ -234,9 +234,9 @@ function ContentLibrary({ user }: { user: User }){
   },[categories,videos,importResults,hydrated,needsNewLibrary]);
 
   useEffect(()=>{
-    const client = supabase;
-    if(!client||!hydrated||needsNewLibrary)return;
-    const channel=client.channel(`content-organiser-${user.id}`)
+    if(!supabase||!hydrated||needsNewLibrary)return;
+    const supabaseClient=supabase;
+    const channel=supabaseClient.channel(`content-organiser-${user.id}`)
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"content_organiser_library",filter:`user_id=eq.${user.id}`},(payload:any)=>{
         const remote:any=payload.new;
         if(!remote||remote.revision<=revisionRef.current||savingRef.current)return;
@@ -249,7 +249,7 @@ function ContentLibrary({ user }: { user: User }){
         setImportResults(logs);setImportProgress({done:logs.length,total:logs.length});
         setSyncStatus("Updated from another device");
       }).subscribe();
-    return ()=>{client.removeChannel(channel);};
+    return ()=>{supabaseClient.removeChannel(channel);};
   },[user.id,hydrated,needsNewLibrary]);
 
   async function createNewCloudLibrary(){
@@ -718,6 +718,7 @@ function AuthGate(){
   const [mode,setMode]=useState<"signin"|"signup">("signin");
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
+  const [showPassword,setShowPassword]=useState(false);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   useEffect(()=>{
@@ -758,9 +759,58 @@ function AuthGate(){
       setBusy(false);
     }
   }
-  if(checking)return <main className="shell"><section className="panel" style={{maxWidth:440,margin:"15vh auto",padding:28}}>Connecting to your private library…</section></main>;
+  if(checking)return <main className="authPage"><section className="authLoading"><span className="authSpinner"/><strong>Connecting to your library</strong><span>Securely checking your session…</span></section></main>;
   if(user)return <ContentLibrary user={user}/>;
-  return <main className="shell"><section className="panel" style={{maxWidth:440,margin:"12vh auto",padding:28}}><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>{mode==="signin"?"Sign in":"Create your account"}</h1><p className="muted">Sign in to access and synchronise your saved content across devices.</p><form onSubmit={submit} style={{display:"grid",gap:12,marginTop:22}}><label>Email address<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input type="password" autoComplete={mode==="signin"?"current-password":"new-password"} minLength={6} required value={password} onChange={e=>setPassword(e.target.value)} /></label><button className="primary" type="submit" disabled={busy}>{busy?(mode==="signin"?"Signing in…":"Creating account…"):(mode==="signin"?"Sign in":"Create account")}</button></form>{message&&<p role="status" className="muted" style={{marginTop:14}}>{message}</p>}<p style={{marginTop:18,fontSize:13}}>{mode==="signin"?"New to Content Organiser?":"Already have an account?"} <button type="button" className="textButton" onClick={()=>{setMode(mode==="signin"?"signup":"signin");setMessage("");}}>{mode==="signin"?"Create an account":"Sign in"}</button></p></section></main>;
+  const isSignup=mode==="signup";
+  return <main className="authPage">
+    <section className="authShell" aria-label="Content Organiser account">
+      <aside className="authStory">
+        <div className="authBrand">
+          <span className="authBrandMark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M8 7.5h10.5A5.5 5.5 0 0 1 24 13v11.5H13.5A5.5 5.5 0 0 1 8 19V7.5Z" stroke="currentColor" strokeWidth="2.2"/><path d="M8 12.5h10.5A5.5 5.5 0 0 1 24 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="M13 16.5h6M13 20h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
+          <span>Content<span className="authBrandLight">Organiser</span></span>
+        </div>
+        <div className="authStoryContent">
+          <span className="authOverline">YOUR IDEAS, IN ONE PLACE</span>
+          <h1>Make room for<br/><em>good discoveries.</em></h1>
+          <p>Keep the videos, articles and links worth coming back to — organised in one personal library.</p>
+          <div className="authFeatureList">
+            <div><span className="authFeatureIcon">↗</span><span><strong>Save anything worth keeping</strong><small>Videos, articles and useful links together.</small></span></div>
+            <div><span className="authFeatureIcon">▦</span><span><strong>Organise it your way</strong><small>Build categories that match how you think.</small></span></div>
+            <div><span className="authFeatureIcon">⌁</span><span><strong>Pick up on any device</strong><small>Your library stays in sync when you sign in.</small></span></div>
+          </div>
+        </div>
+        <div className="authStoryFoot"><span className="authStatusDot"/> Private by default <span className="authFootDivider">·</span> Synced securely</div>
+        <div className="authDecor authDecorOne"/><div className="authDecor authDecorTwo"/>
+      </aside>
+      <section className="authFormSide">
+        <div className="authMobileBrand">
+          <span className="authBrandMark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M8 7.5h10.5A5.5 5.5 0 0 1 24 13v11.5H13.5A5.5 5.5 0 0 1 8 19V7.5Z" stroke="currentColor" strokeWidth="2.2"/><path d="M8 12.5h10.5A5.5 5.5 0 0 1 24 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="M13 16.5h6M13 20h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg></span>
+          <span>Content<span className="authBrandLight">Organiser</span></span>
+        </div>
+        <div className="authFormWrap">
+          <div className="authWelcome">
+            <span className="authEyebrow">{isSignup?"GET STARTED":"WELCOME BACK"}</span>
+            <h2>{isSignup?"Create your account":"Sign in to your library"}</h2>
+            <p>{isSignup?"A personal space for everything you want to remember.":"Your saved ideas are right where you left them."}</p>
+          </div>
+          <div className="authModeSwitch" role="tablist" aria-label="Account access">
+            <button type="button" role="tab" aria-selected={!isSignup} className={!isSignup?"active":""} onClick={()=>{setMode("signin");setMessage("");}}>Sign in</button>
+            <button type="button" role="tab" aria-selected={isSignup} className={isSignup?"active":""} onClick={()=>{setMode("signup");setMessage("");}}>Create account</button>
+          </div>
+          <form className="authForm" onSubmit={submit}>
+            <label className="authField"><span>Email address</span><div className="authInputWrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input type="email" autoComplete="email" placeholder="you@example.com" required value={email} onChange={e=>setEmail(e.target.value)}/></div></label>
+            <label className="authField"><span>Password</span><div className="authInputWrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input type={showPassword?"text":"password"} autoComplete={isSignup?"new-password":"current-password"} placeholder={isSignup?"At least 6 characters":"Enter your password"} minLength={6} required value={password} onChange={e=>setPassword(e.target.value)}/><button className="authShowPassword" type="button" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?"Hide password":"Show password"}>{showPassword?"Hide":"Show"}</button></div></label>
+            {isSignup&&<p className="authPasswordHint">Use at least 6 characters for your password.</p>}
+            <button className="authSubmit" type="submit" disabled={busy}>{busy?<><span className="authButtonSpinner"/>{isSignup?"Creating your account…":"Signing you in…"}</>:<>{isSignup?"Create account":"Sign in"} <span aria-hidden="true">→</span></>}</button>
+          </form>
+          {message&&<div role="status" aria-live="polite" className={`authMessage ${message.startsWith("Account created")||message.startsWith("Authentication successful")?"success":""}`}>{message}</div>}
+          <p className="authSwitchPrompt">{isSignup?"Already have an account?":"New to Content Organiser?"} <button type="button" onClick={()=>{setMode(isSignup?"signin":"signup");setMessage("");}}>{isSignup?"Sign in":"Create an account"}</button></p>
+          <div className="authSecurityNote"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 6v5c0 4.5-2.8 8-7 10-4.2-2-7-5.5-7-10V6l7-3Z"/><path d="m9 12 2 2 4-4"/></svg><span>Your library is private to your account.</span></div>
+        </div>
+        <div className="authCopyright">CONTENT ORGANISER <span>·</span> YOUR PERSONAL LIBRARY</div>
+      </section>
+    </section>
+  </main>;
 }
 
 export default function Home(){return <AuthGate/>;}
