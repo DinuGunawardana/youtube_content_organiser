@@ -2,6 +2,8 @@
 
 import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import AdSenseUnit from "./AdSenseUnit";
+import { supabase } from "../lib/supabase";
+import type { User } from "@supabase/supabase-js";
 
 type Category = { id: string; name: string; subcategories: {id: string; name: string}[] };
 type Video = {
@@ -123,7 +125,7 @@ function identifyLink(raw:string):LinkInfo|null{
 }
 function durationLabel(n?:number|null){if(n==null)return "";const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?`${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`:`${m}:${String(s).padStart(2,"0")}`;}
 
-export default function Home(){
+function ContentLibrary({ user }: { user: User }){
   const [categories,setCategories]=useState<Category[]>(DEFAULT_CATEGORIES);
   const [videos,setVideos]=useState<Video[]>([]);
   const [hydrated,setHydrated]=useState(false);
@@ -149,18 +151,124 @@ export default function Home(){
   const suppressCardClickRef=useRef(false);
   const fileRef=useRef<HTMLInputElement>(null);
 
+  const revisionRef=useRef(0);
+  const dirtyRef=useRef(false);
+  const savingRef=useRef(false);
+  const skipNextSaveRef=useRef(false);
+  const saveTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const [syncStatus,setSyncStatus]=useState("Connecting to cloud…");
+  const [needsNewLibrary,setNeedsNewLibrary]=useState(false);
+  const [conflict,setConflict]=useState(false);
+
   useEffect(()=>{
-    try{
-      const saved=localStorage.getItem(STORAGE_KEY);
-      if(saved){const data=JSON.parse(saved);if(Array.isArray(data.categories)&&data.categories.length)setCategories(data.categories);if(Array.isArray(data.videos))setVideos(data.videos);}
-    }catch{ /* Ignore corrupt local browser data; keep starter categories. */ }
-    try{
-      const savedLog=localStorage.getItem(IMPORT_LOG_KEY);
-      if(savedLog){const parsed=JSON.parse(savedLog);if(Array.isArray(parsed)){setImportResults(parsed);setImportProgress({done:parsed.length,total:parsed.length});}}
-    }catch{ /* Ignore a damaged previous import log. */ }
-    setHydrated(true);
-  },[]);
-  useEffect(()=>{if(hydrated)localStorage.setItem(STORAGE_KEY,JSON.stringify({categories,videos}));},[categories,videos,hydrated]);
+    let active=true;
+    async function loadCloudLibrary(){
+      if(!supabase){setSyncStatus("Cloud connection is not configured.");return;}
+      setSyncStatus("Loading your cloud library…");
+      const {data:cloud,error}=await supabase.from("content_organiser_library")
+        .select("categories,videos,import_logs,revision")
+        .eq("user_id",user.id).maybeSingle();
+      if(!active)return;
+      if(error){setSyncStatus(`Cloud load failed: ${error.message}`);return;}
+      if(cloud){
+        skipNextSaveRef.current=true;
+        setCategories(Array.isArray(cloud.categories)&&cloud.categories.length?cloud.categories:DEFAULT_CATEGORIES);
+        setVideos(Array.isArray(cloud.videos)?cloud.videos:[]);
+        const logs=Array.isArray(cloud.import_logs)?cloud.import_logs:[];
+        setImportResults(logs);setImportProgress({done:logs.length,total:logs.length});
+        revisionRef.current=cloud.revision||1;
+        try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:cloud.categories,videos:cloud.videos}));localStorage.setItem(IMPORT_LOG_KEY,JSON.stringify(logs));}catch{}
+        setSyncStatus("Cloud library loaded");setHydrated(true);return;
+      }
+      // First authenticated device migrates the original browser's local data.
+      let localData:any=null;let localLogs:any=[];
+      try{const raw=localStorage.getItem(STORAGE_KEY);if(raw)localData=JSON.parse(raw);}catch{}
+      try{const raw=localStorage.getItem(IMPORT_LOG_KEY);if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed))localLogs=parsed;}}catch{}
+      if(localData&&(Array.isArray(localData.categories)||Array.isArray(localData.videos))){
+        const migratedCategories=Array.isArray(localData.categories)&&localData.categories.length?localData.categories:DEFAULT_CATEGORIES;
+        const migratedVideos=Array.isArray(localData.videos)?localData.videos:[];
+        const {data,error:saveError}=await supabase.rpc("save_content_organiser_library",{
+          p_categories:migratedCategories,p_videos:migratedVideos,p_import_logs:localLogs,p_expected_revision:0
+        });
+        if(!active)return;
+        if(saveError){setSyncStatus(`Migration failed: ${saveError.message}`);return;}
+        const saved=Array.isArray(data)?data[0]:data;
+        revisionRef.current=saved?.revision||1;
+        skipNextSaveRef.current=true;
+        setCategories(migratedCategories);setVideos(migratedVideos);setImportResults(localLogs);
+        setImportProgress({done:localLogs.length,total:localLogs.length});
+        setSyncStatus(`Migrated ${migratedVideos.length} item(s) from this browser`);setHydrated(true);return;
+      }
+      setCategories(DEFAULT_CATEGORIES);setVideos([]);setImportResults([]);
+      setNeedsNewLibrary(true);setSyncStatus("No cloud library exists yet");setHydrated(true);
+    }
+    loadCloudLibrary();
+    return ()=>{active=false;};
+  },[user.id]);
+
+  useEffect(()=>{
+    if(!hydrated||needsNewLibrary||!supabase)return;
+    if(skipNextSaveRef.current){skipNextSaveRef.current=false;return;}
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories,videos}));localStorage.setItem(IMPORT_LOG_KEY,JSON.stringify(importResults));}catch{}
+    dirtyRef.current=true;
+    if(saveTimerRef.current)clearTimeout(saveTimerRef.current);
+    saveTimerRef.current=setTimeout(async()=>{
+      if(!supabase)return;
+      setSyncStatus("Saving…");
+      const expected=revisionRef.current;
+      savingRef.current=true;
+      const {data,error}=await supabase.rpc("save_content_organiser_library",{
+        p_categories:categories,p_videos:videos,p_import_logs:importResults,p_expected_revision:expected
+      });
+      savingRef.current=false;
+      if(error){
+        if(error.message.includes("REVISION_CONFLICT")){setConflict(true);setSyncStatus("A newer version exists on another device. Resolve the sync conflict before continuing.");}
+        else setSyncStatus(`Save failed: ${error.message}`);
+        return;
+      }
+      const saved=Array.isArray(data)?data[0]:data;
+      revisionRef.current=saved?.revision||expected+1;dirtyRef.current=false;
+      setSyncStatus("All changes saved");
+    },700);
+    return ()=>{if(saveTimerRef.current)clearTimeout(saveTimerRef.current);};
+  },[categories,videos,importResults,hydrated,needsNewLibrary]);
+
+  useEffect(()=>{
+    if(!supabase||!hydrated||needsNewLibrary)return;
+    const channel=supabase.channel(`content-organiser-${user.id}`)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"content_organiser_library",filter:`user_id=eq.${user.id}`},(payload:any)=>{
+        const remote:any=payload.new;
+        if(!remote||remote.revision<=revisionRef.current||savingRef.current)return;
+        if(dirtyRef.current){setConflict(true);setSyncStatus("Another device changed this library. Your unsaved edits are protected; reload the cloud version to continue.");return;}
+        revisionRef.current=remote.revision;
+        skipNextSaveRef.current=true;
+        setCategories(Array.isArray(remote.categories)&&remote.categories.length?remote.categories:DEFAULT_CATEGORIES);
+        setVideos(Array.isArray(remote.videos)?remote.videos:[]);
+        const logs=Array.isArray(remote.import_logs)?remote.import_logs:[];
+        setImportResults(logs);setImportProgress({done:logs.length,total:logs.length});
+        setSyncStatus("Updated from another device");
+      }).subscribe();
+    return ()=>{supabase.removeChannel(channel);};
+  },[user.id,hydrated,needsNewLibrary]);
+
+  async function createNewCloudLibrary(){
+    if(!supabase)return;
+    const {data,error}=await supabase.rpc("save_content_organiser_library",{
+      p_categories:DEFAULT_CATEGORIES,p_videos:[],p_import_logs:[],p_expected_revision:0
+    });
+    if(error){setNotice(`Could not create cloud library: ${error.message}`);return;}
+    const saved=Array.isArray(data)?data[0]:data;revisionRef.current=saved?.revision||1;
+    skipNextSaveRef.current=true;
+    setCategories(DEFAULT_CATEGORIES);setVideos([]);setImportResults([]);setNeedsNewLibrary(false);setSyncStatus("Cloud library created");
+  }
+  async function reloadCloudVersion(){
+    if(!supabase)return;
+    const {data,error}=await supabase.from("content_organiser_library").select("categories,videos,import_logs,revision").eq("user_id",user.id).single();
+    if(error){setNotice(`Could not reload cloud version: ${error.message}`);return;}
+    revisionRef.current=data.revision;dirtyRef.current=false;setConflict(false);skipNextSaveRef.current=true;
+    setCategories(data.categories||DEFAULT_CATEGORIES);setVideos(data.videos||[]);setImportResults(data.import_logs||[]);
+    setSyncStatus("Cloud version loaded");
+  }
 
   const currentCategory=categories.find(c=>c.id===categoryId)||categories[0];
   const filtered=useMemo(()=>videos.filter(v=>{
@@ -485,7 +593,10 @@ export default function Home(){
     const cat=categories.find(c=>c.id===catId);setVideos(p=>p.map(v=>v.id===videoId?{...v,categoryId:catId,subcategoryId:cat?.subcategories[0]?.id||""}:v));
   }
 
+  if(needsNewLibrary)return <main className="shell"><section className="panel" style={{maxWidth:560,margin:"12vh auto",padding:28}}><div className="eyebrow">CLOUD LIBRARY SETUP</div><h1>Welcome to Content Organiser</h1><p>No existing browser library or cloud library was found for this account. If your saved content is on another device, sign in there first to migrate it. Otherwise, create a new cloud library.</p><button className="primary" onClick={createNewCloudLibrary}>Create new cloud library</button><p className="muted" style={{marginTop:14}}>Your library will be private to this account.</p></section></main>;
+
   return <main className="shell">
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"8px 0",fontSize:12}}><span aria-live="polite">☁ {syncStatus}{conflict?" · Unsaved changes are protected.":""}</span><span>{user.email||"Signed in"} · <button className="textButton" onClick={async()=>{await supabase?.auth.signOut();}}>Sign out</button>{conflict&&<> · <button className="textButton" onClick={reloadCloudVersion}>Load cloud version</button></>}</span></div>
     <header className="topbar"><div><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>Content organiser</h1><p>Save YouTube videos, articles, social media posts and useful website links in one organised library.</p></div><div className="countPill">{videos.length} saved links</div></header>
 
     <section className="panel importPanel">
@@ -598,3 +709,35 @@ export default function Home(){
     <footer>Library data is stored in this browser on this device. Back up regularly by exporting the content library CSV.</footer>
   </main>;
 }
+
+
+function AuthGate(){
+  const [user,setUser]=useState<User|null>(null);
+  const [checking,setChecking]=useState(true);
+  const [mode,setMode]=useState<"signin"|"signup">("signin");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [message,setMessage]=useState("");
+  useEffect(()=>{
+    if(!supabase){setMessage("Supabase environment variables are missing. Check your Netlify and .env.local settings.");setChecking(false);return;}
+    supabase.auth.getUser().then(({data,error})=>{setUser(data.user);if(error)setMessage(error.message);setChecking(false);});
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{setUser(session?.user||null);setChecking(false);});
+    return ()=>subscription.unsubscribe();
+  },[]);
+  async function submit(e:FormEvent){
+    e.preventDefault();if(!supabase)return;setBusy(true);setMessage("");
+    const result=mode==="signin"
+      ? await supabase.auth.signInWithPassword({email:email.trim(),password})
+      : await supabase.auth.signUp({email:email.trim(),password});
+    setBusy(false);
+    if(result.error){setMessage(result.error.message);return;}
+    if(mode==="signup"&&!result.data.session)setMessage("Account created. Check your email for the confirmation link, then return here to sign in.");
+    else if(result.data.user)setUser(result.data.user);
+  }
+  if(checking)return <main className="shell"><section className="panel" style={{maxWidth:440,margin:"15vh auto",padding:28}}>Connecting to your private library…</section></main>;
+  if(user)return <ContentLibrary user={user}/>;
+  return <main className="shell"><section className="panel" style={{maxWidth:440,margin:"12vh auto",padding:28}}><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>{mode==="signin"?"Sign in":"Create your account"}</h1><p className="muted">Sign in to access and synchronise your saved content across devices.</p><form onSubmit={submit} style={{display:"grid",gap:12,marginTop:22}}><label>Email address<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input type="password" autoComplete={mode==="signin"?"current-password":"new-password"} minLength={6} required value={password} onChange={e=>setPassword(e.target.value)} /></label><button className="primary" type="submit" disabled={busy}>{busy?(mode==="signin"?"Signing in…":"Creating account…"):(mode==="signin"?"Sign in":"Create account")}</button></form>{message&&<p role="status" className="muted" style={{marginTop:14}}>{message}</p>}<p style={{marginTop:18,fontSize:13}}>{mode==="signin"?"New to Content Organiser?":"Already have an account?"} <button className="textButton" onClick={()=>{setMode(mode==="signin"?"signup":"signin");setMessage("");}}>{mode==="signin"?"Create an account":"Sign in"}</button></p></section></main>;
+}
+
+export default function Home(){return <AuthGate/>;}
