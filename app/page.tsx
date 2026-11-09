@@ -772,7 +772,7 @@ function AuthGate(){
         <div className="authStoryContent">
           <span className="authOverline">YOUR IDEAS, IN ONE PLACE</span>
           <h1>Make room for<br/><em>good discoveries.</em></h1>
-          <p>Keep the videos, articles and links worth coming back to — organised in one personal library.</p>
+          <p>Keep the videos, articles and links worth coming back to - organised in one personal library.</p>
           <div className="authFeatureList">
             <div><span className="authFeatureIcon">↗</span><span><strong>Save anything worth keeping</strong><small>Videos, articles and useful links together.</small></span></div>
             <div><span className="authFeatureIcon">▦</span><span><strong>Organise it your way</strong><small>Build categories that match how you think.</small></span></div>
