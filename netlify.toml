@@ -1,0 +1,4 @@
+[build.environment]
+  # AdSense publisher IDs are public identifiers and are intentionally present
+  # in the browser bundle. Keep secrets scanning enabled for all other values.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_ADSENSE_CLIENT_ID"

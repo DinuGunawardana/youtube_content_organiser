@@ -60,3 +60,10 @@ This project is configured for **one manual responsive display ad** in the conte
 If either value is missing, the ad component and AdSense loader are omitted, and the rest of the app continues to work. Ad blockers, network restrictions, or AdSense review/serving status can also prevent an ad from appearing; that should not affect saved content.
 
 **Important:** Do not publish the example IDs. Add an accurate privacy/cookie disclosure for advertising technologies and implement any consent requirements that apply to your visitors and target regions. Follow the current AdSense account guidance for any `ads.txt` requirement. Never place ads so they resemble navigation or library controls.
+
+
+## 5. Netlify secrets-scanning configuration
+
+The root `netlify.toml` excludes only `NEXT_PUBLIC_ADSENSE_CLIENT_ID` from Netlify's secrets scan. This is intentional: Next.js inlines `NEXT_PUBLIC_` variables into browser assets, and an AdSense publisher ID is designed to be public. Secrets scanning remains enabled for other values, including `YOUTUBE_API_KEY`.
+
+Do not add `YOUTUBE_API_KEY` to `SECRETS_SCAN_OMIT_KEYS`, and do not disable secrets scanning globally.
