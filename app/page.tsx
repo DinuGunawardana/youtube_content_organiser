@@ -726,18 +726,40 @@ function AuthGate(){
     return ()=>subscription.unsubscribe();
   },[]);
   async function submit(e:FormEvent){
-    e.preventDefault();if(!supabase)return;setBusy(true);setMessage("");
-    const result=mode==="signin"
-      ? await supabase.auth.signInWithPassword({email:email.trim(),password})
-      : await supabase.auth.signUp({email:email.trim(),password});
-    setBusy(false);
-    if(result.error){setMessage(result.error.message);return;}
-    if(mode==="signup"&&!result.data.session)setMessage("Account created. Check your email for the confirmation link, then return here to sign in.");
-    else if(result.data.user)setUser(result.data.user);
+    e.preventDefault();
+    if(busy)return;
+    setMessage("");
+    if(!supabase){
+      setMessage("Supabase is not configured in this deployment. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, then restart the development server or redeploy Netlify.");
+      return;
+    }
+    const cleanEmail=email.trim();
+    if(!cleanEmail||!password){setMessage("Enter your email address and password.");return;}
+    if(mode==="signup"&&password.length<6){setMessage("Your password must contain at least 6 characters.");return;}
+    setBusy(true);
+    try{
+      const result=mode==="signin"
+        ? await supabase.auth.signInWithPassword({email:cleanEmail,password})
+        : await supabase.auth.signUp({email:cleanEmail,password});
+      if(result.error){setMessage(result.error.message);return;}
+      if(mode==="signup"&&!result.data.session){
+        setMessage("Account created. Check your email for the confirmation link. After confirming your email, return here and sign in.");
+      }else if(result.data.user){
+        setUser(result.data.user);
+        setMessage("Authentication successful. Loading your library…");
+      }else{
+        setMessage("The authentication request completed, but no user session was returned. Check your email confirmation settings and try signing in.");
+      }
+    }catch(error){
+      const detail=error instanceof Error?error.message:"Unknown network or browser error";
+      setMessage(`Could not ${mode==="signup"?"create your account":"sign in"}: ${detail}. Check your connection and try again.`);
+    }finally{
+      setBusy(false);
+    }
   }
   if(checking)return <main className="shell"><section className="panel" style={{maxWidth:440,margin:"15vh auto",padding:28}}>Connecting to your private library…</section></main>;
   if(user)return <ContentLibrary user={user}/>;
-  return <main className="shell"><section className="panel" style={{maxWidth:440,margin:"12vh auto",padding:28}}><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>{mode==="signin"?"Sign in":"Create your account"}</h1><p className="muted">Sign in to access and synchronise your saved content across devices.</p><form onSubmit={submit} style={{display:"grid",gap:12,marginTop:22}}><label>Email address<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input type="password" autoComplete={mode==="signin"?"current-password":"new-password"} minLength={6} required value={password} onChange={e=>setPassword(e.target.value)} /></label><button className="primary" type="submit" disabled={busy}>{busy?(mode==="signin"?"Signing in…":"Creating account…"):(mode==="signin"?"Sign in":"Create account")}</button></form>{message&&<p role="status" className="muted" style={{marginTop:14}}>{message}</p>}<p style={{marginTop:18,fontSize:13}}>{mode==="signin"?"New to Content Organiser?":"Already have an account?"} <button className="textButton" onClick={()=>{setMode(mode==="signin"?"signup":"signin");setMessage("");}}>{mode==="signin"?"Create an account":"Sign in"}</button></p></section></main>;
+  return <main className="shell"><section className="panel" style={{maxWidth:440,margin:"12vh auto",padding:28}}><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>{mode==="signin"?"Sign in":"Create your account"}</h1><p className="muted">Sign in to access and synchronise your saved content across devices.</p><form onSubmit={submit} style={{display:"grid",gap:12,marginTop:22}}><label>Email address<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)} /></label><label>Password<input type="password" autoComplete={mode==="signin"?"current-password":"new-password"} minLength={6} required value={password} onChange={e=>setPassword(e.target.value)} /></label><button className="primary" type="submit" disabled={busy}>{busy?(mode==="signin"?"Signing in…":"Creating account…"):(mode==="signin"?"Sign in":"Create account")}</button></form>{message&&<p role="status" className="muted" style={{marginTop:14}}>{message}</p>}<p style={{marginTop:18,fontSize:13}}>{mode==="signin"?"New to Content Organiser?":"Already have an account?"} <button type="button" className="textButton" onClick={()=>{setMode(mode==="signin"?"signup":"signin");setMessage("");}}>{mode==="signin"?"Create an account":"Sign in"}</button></p></section></main>;
 }
 
 export default function Home(){return <AuthGate/>;}
