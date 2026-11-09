@@ -234,8 +234,9 @@ function ContentLibrary({ user }: { user: User }){
   },[categories,videos,importResults,hydrated,needsNewLibrary]);
 
   useEffect(()=>{
-    if(!supabase||!hydrated||needsNewLibrary)return;
-    const channel=supabase.channel(`content-organiser-${user.id}`)
+    const client = supabase;
+    if(!client||!hydrated||needsNewLibrary)return;
+    const channel=client.channel(`content-organiser-${user.id}`)
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"content_organiser_library",filter:`user_id=eq.${user.id}`},(payload:any)=>{
         const remote:any=payload.new;
         if(!remote||remote.revision<=revisionRef.current||savingRef.current)return;
@@ -248,7 +249,7 @@ function ContentLibrary({ user }: { user: User }){
         setImportResults(logs);setImportProgress({done:logs.length,total:logs.length});
         setSyncStatus("Updated from another device");
       }).subscribe();
-    return ()=>{supabase.removeChannel(channel);};
+    return ()=>{client.removeChannel(channel);};
   },[user.id,hydrated,needsNewLibrary]);
 
   async function createNewCloudLibrary(){
