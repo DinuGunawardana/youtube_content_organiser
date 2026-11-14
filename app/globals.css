@@ -309,8 +309,11 @@
 .settingsFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding-top:15px;border-top:1px solid #e8eeee;font-size:10px;color:#7b8989}
 @media(max-width:600px){.settingsModal{padding:17px;border-radius:14px}.settingsBackdrop{padding:10px}.settingsSectionHead{align-items:flex-start;flex-direction:column}.settingsCategoryTop{flex-wrap:wrap}.settingsThemeRow{align-items:flex-start;flex-direction:column}.settingsFooter{align-items:flex-start;flex-direction:column}}
 
-.shell.theme-dark{width:100%;padding:42px max(22px,calc((100% - 1440px)/2)) 32px;min-height:100vh}
 
 .settingsAddCategory{display:flex;gap:6px;align-items:center}.settingsAddCategory input{width:145px;min-width:0;border:1px solid #dce5e4;border-radius:7px;padding:8px 9px;font-size:11px;background:#fff;color:#203233}
 .theme-dark .settingsAddCategory input{background:#142021;color:#e7eeee;border-color:#3a5051}
 @media(max-width:600px){.settingsAddCategory{width:100%}.settingsAddCategory input{flex:1;width:auto}}
+
+/* Apply the dark canvas to the full browser viewport, not only the content shell. */
+:root[data-theme="dark"] body{background:#111a1b;color:#e7eeee;transition:background-color .18s ease,color .18s ease}
+:root[data-theme="light"] body{background:#f4f7f7;color:#1a292a;transition:background-color .18s ease,color .18s ease}

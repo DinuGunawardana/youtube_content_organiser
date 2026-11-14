@@ -161,6 +161,7 @@ function ContentLibrary({ user }: { user: User }){
   const [conflict,setConflict]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [theme,setTheme]=useState<"light"|"dark">(user.user_metadata?.content_organiser_theme==="dark"?"dark":"light");
+  useEffect(()=>{document.documentElement.dataset.theme=theme;return ()=>{delete document.documentElement.dataset.theme;};},[theme]);
   const [editingCategoryId,setEditingCategoryId]=useState<string|null>(null);
   const [editingCategoryName,setEditingCategoryName]=useState("");
   const [editingSettingSubId,setEditingSettingSubId]=useState<string|null>(null);
@@ -668,7 +669,7 @@ function ContentLibrary({ user }: { user: User }){
 
   if(needsNewLibrary)return <main className="shell"><section className="panel" style={{maxWidth:560,margin:"12vh auto",padding:28}}><div className="eyebrow">CLOUD LIBRARY SETUP</div><h1>Welcome to Content Organiser</h1><p>No existing browser library or cloud library was found for this account. If your saved content is on another device, sign in there first to migrate it. Otherwise, create a new cloud library.</p><button className="primary" onClick={createNewCloudLibrary}>Create new cloud library</button><p className="muted" style={{marginTop:14}}>Your library will be private to this account.</p></section></main>;
 
-  return <main className="shell">
+  return <main className={`shell${theme==="dark"?" theme-dark":""}`}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"8px 0",fontSize:12}}><span aria-live="polite">☁ {syncStatus}{conflict?" · Unsaved changes are protected.":""}</span><span>{user.email||"Signed in"} · <button className="textButton" onClick={()=>setSettingsOpen(true)}>Settings</button> · <button className="textButton" onClick={()=>changeTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Dark theme":"Light theme"}</button> · <button className="textButton" onClick={async()=>{await supabase?.auth.signOut();}}>Sign out</button>{conflict&&<> · <button className="textButton" onClick={reloadCloudVersion}>Load cloud version</button></>}</span></div>
     <header className="topbar"><div><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>Content organiser</h1><p>Save YouTube videos, articles, social media posts and useful website links in one organised library.</p></div><div className="countPill">{videos.length} saved links</div></header>
 
