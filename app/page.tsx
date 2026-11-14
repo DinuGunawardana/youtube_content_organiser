@@ -159,6 +159,14 @@ function ContentLibrary({ user }: { user: User }){
   const [syncStatus,setSyncStatus]=useState("Connecting to cloud…");
   const [needsNewLibrary,setNeedsNewLibrary]=useState(false);
   const [conflict,setConflict]=useState(false);
+  const [settingsOpen,setSettingsOpen]=useState(false);
+  const [theme,setTheme]=useState<"light"|"dark">(user.user_metadata?.content_organiser_theme==="dark"?"dark":"light");
+  const [editingCategoryId,setEditingCategoryId]=useState<string|null>(null);
+  const [editingCategoryName,setEditingCategoryName]=useState("");
+  const [editingSettingSubId,setEditingSettingSubId]=useState<string|null>(null);
+  const [editingSettingSubName,setEditingSettingSubName]=useState("");
+  const [newSettingSubcategory,setNewSettingSubcategory]=useState<Record<string,string>>({});
+  const [newSettingCategory,setNewSettingCategory]=useState("");
 
   useEffect(()=>{
     let active=true;
@@ -271,6 +279,67 @@ function ContentLibrary({ user }: { user: User }){
     setSyncStatus("Cloud version loaded");
   }
 
+  async function changeTheme(next:"light"|"dark"){
+    if(!supabase)return;
+    const previous=theme;
+    setTheme(next);
+    const {error}=await supabase.auth.updateUser({data:{content_organiser_theme:next}});
+    if(error){setTheme(previous);setNotice(`Could not save theme preference: ${error.message}`);}
+  }
+  function saveCategoryEdit(){
+    if(!editingCategoryId)return;
+    const name=editingCategoryName.trim();
+    if(!name){setNotice("Category name cannot be empty.");return;}
+    if(categories.some(c=>c.id!==editingCategoryId&&c.name.toLowerCase()===name.toLowerCase())){setNotice("That category already exists.");return;}
+    setCategories(prev=>prev.map(c=>c.id===editingCategoryId?{...c,name}:c));
+    setEditingCategoryId(null);setEditingCategoryName("");setNotice(`Category renamed to “${name}”.`);
+  }
+  function removeCategory(id:string){
+    const target=categories.find(c=>c.id===id);if(!target)return;
+    if(categories.length===1){setNotice("You must keep at least one category.");return;}
+    const remaining=categories.filter(c=>c.id!==id);
+    const replacement=remaining[0];
+    const count=videos.filter(v=>v.categoryId===id).length;
+    if(!confirm(`Delete category “${target.name}”? ${count} saved item(s) will be moved to “${replacement.name}”.`))return;
+    setCategories(remaining);
+    setVideos(prev=>prev.map(v=>v.categoryId===id?{...v,categoryId:replacement.id,subcategoryId:""}:v));
+    if(categoryId===id){setCategoryId(replacement.id);setSubcategoryId("");}
+    if(filterCategory===id){setFilterCategory("all");setFilterSubcategory("all");}
+    setNotice(`Category “${target.name}” deleted. Its saved content was kept under “${replacement.name}”.`);
+  }
+  function addSettingCategory(){
+    const name=newSettingCategory.trim();if(!name)return;
+    if(categories.some(c=>c.name.toLowerCase()===name.toLowerCase())){setNotice("That category already exists.");return;}
+    const item={id:slug(name),name,subcategories:[]};
+    setCategories(prev=>[...prev,item]);setCategoryId(item.id);setSubcategoryId("");setNewSettingCategory("");
+    setNotice(`Category “${name}” created.`);
+  }
+  function addSettingSubcategory(category:string){
+    const name=(newSettingSubcategory[category]||"").trim();if(!name)return;
+    const target=categories.find(c=>c.id===category);if(!target)return;
+    if(target.subcategories.some(x=>x.name.toLowerCase()===name.toLowerCase())){setNotice("That subcategory already exists in this category.");return;}
+    const item={id:slug(`${category}-${name}`),name};
+    setCategories(prev=>prev.map(c=>c.id===category?{...c,subcategories:[...c.subcategories,item]}:c));
+    setNewSettingSubcategory(prev=>({...prev,[category]:""}));
+    setNotice(`Subcategory “${name}” added to ${target.name}.`);
+  }
+  function saveSettingSubcategory(category:string){
+    if(!editingSettingSubId)return;
+    const name=editingSettingSubName.trim();const target=categories.find(c=>c.id===category);
+    if(!target||!name){setNotice("Subcategory name cannot be empty.");return;}
+    if(target.subcategories.some(x=>x.id!==editingSettingSubId&&x.name.toLowerCase()===name.toLowerCase())){setNotice("That subcategory already exists in this category.");return;}
+    setCategories(prev=>prev.map(c=>c.id===category?{...c,subcategories:c.subcategories.map(x=>x.id===editingSettingSubId?{...x,name}:x)}:c));
+    setEditingSettingSubId(null);setEditingSettingSubName("");setNotice(`Subcategory renamed to “${name}”.`);
+  }
+  function deleteSettingSubcategory(category:string,subId:string){
+    const target=categories.find(c=>c.id===category);const sub=target?.subcategories.find(x=>x.id===subId);if(!target||!sub)return;
+    const count=videos.filter(v=>v.categoryId===category&&v.subcategoryId===subId).length;
+    if(!confirm(`Delete subcategory “${sub.name}”? ${count} saved item(s) will remain in “${target.name}” without a subcategory.`))return;
+    setCategories(prev=>prev.map(c=>c.id===category?{...c,subcategories:c.subcategories.filter(x=>x.id!==subId)}:c));
+    setVideos(prev=>prev.map(v=>v.categoryId===category&&v.subcategoryId===subId?{...v,subcategoryId:""}:v));
+    if(filterSubcategory===subId)setFilterSubcategory("all");
+    if(subcategoryId===subId)setSubcategoryId("");
+  }
   const currentCategory=categories.find(c=>c.id===categoryId)||categories[0];
   const filtered=useMemo(()=>videos.filter(v=>{
     const catOk=filterCategory==="all"||v.categoryId===filterCategory;
@@ -591,13 +660,16 @@ function ContentLibrary({ user }: { user: User }){
     }catch{setNotice("Could not save the deletion. Your library has not been changed.");}
   }
   function changeVideoCategory(videoId:string,catId:string){
-    const cat=categories.find(c=>c.id===catId);setVideos(p=>p.map(v=>v.id===videoId?{...v,categoryId:catId,subcategoryId:cat?.subcategories[0]?.id||""}:v));
+    setVideos(p=>p.map(v=>v.id===videoId?{...v,categoryId:catId,subcategoryId:""}:v));
+  }
+  function changeVideoSubcategory(videoId:string,subId:string){
+    setVideos(p=>p.map(v=>v.id===videoId?{...v,subcategoryId:subId}:v));
   }
 
   if(needsNewLibrary)return <main className="shell"><section className="panel" style={{maxWidth:560,margin:"12vh auto",padding:28}}><div className="eyebrow">CLOUD LIBRARY SETUP</div><h1>Welcome to Content Organiser</h1><p>No existing browser library or cloud library was found for this account. If your saved content is on another device, sign in there first to migrate it. Otherwise, create a new cloud library.</p><button className="primary" onClick={createNewCloudLibrary}>Create new cloud library</button><p className="muted" style={{marginTop:14}}>Your library will be private to this account.</p></section></main>;
 
   return <main className="shell">
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"8px 0",fontSize:12}}><span aria-live="polite">☁ {syncStatus}{conflict?" · Unsaved changes are protected.":""}</span><span>{user.email||"Signed in"} · <button className="textButton" onClick={async()=>{await supabase?.auth.signOut();}}>Sign out</button>{conflict&&<> · <button className="textButton" onClick={reloadCloudVersion}>Load cloud version</button></>}</span></div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"8px 0",fontSize:12}}><span aria-live="polite">☁ {syncStatus}{conflict?" · Unsaved changes are protected.":""}</span><span>{user.email||"Signed in"} · <button className="textButton" onClick={()=>setSettingsOpen(true)}>Settings</button> · <button className="textButton" onClick={()=>changeTheme(theme==="light"?"dark":"light")}>{theme==="light"?"Dark theme":"Light theme"}</button> · <button className="textButton" onClick={async()=>{await supabase?.auth.signOut();}}>Sign out</button>{conflict&&<> · <button className="textButton" onClick={reloadCloudVersion}>Load cloud version</button></>}</span></div>
     <header className="topbar"><div><div className="eyebrow">PERSONAL CONTENT LIBRARY</div><h1>Content organiser</h1><p>Save YouTube videos, articles, social media posts and useful website links in one organised library.</p></div><div className="countPill">{videos.length} saved links</div></header>
 
     <section className="panel importPanel">
@@ -647,12 +719,8 @@ function ContentLibrary({ user }: { user: User }){
             <button type="button" className={`subCategoryTile ${!subcategoryId?"active":""}`} onClick={()=>chooseSubcategory("")}>All content</button>
             {subOptions.map(sub=><button type="button" key={sub.id} className={`subCategoryTile ${subcategoryId===sub.id?"active":""}`} onClick={()=>chooseSubcategory(sub.id)}>{sub.name}<small>{videos.filter(v=>v.categoryId===currentCategory.id&&v.subcategoryId===sub.id).length}</small></button>)}
           </div>
-          {editingSubcategoryId&&<div className="editSubcategory"><input aria-label="Edit subcategory name" value={editingSubcategoryName} onChange={e=>setEditingSubcategoryName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveSubcategoryEdit();if(e.key==="Escape")setEditingSubcategoryId(null);}}/><button type="button" onClick={saveSubcategoryEdit}>Save</button><button type="button" className="cancelEdit" onClick={()=>setEditingSubcategoryId(null)}>Cancel</button></div>}
-          <div className="subcategoryEditList">{subOptions.map(sub=><div className="subcategoryEditRow" key={sub.id}><span>{sub.name}</span><button type="button" className="miniAction" onClick={()=>beginEditSubcategory(sub)} aria-label={`Rename ${sub.name}`}>Edit</button><button type="button" className="miniDanger" onClick={()=>removeSubcategory(sub.id)} aria-label={`Delete ${sub.name}`}>Delete</button></div>)}</div>
+          <button type="button" className="outline settingsManageButton" onClick={()=>setSettingsOpen(true)}>Manage categories & subcategories</button>
         </div>
-        <div className="addGroup"><label htmlFor="new-cat">Add category</label><div className="inlineAdd"><input id="new-cat" value={newCategory} onChange={e=>setNewCategory(e.target.value)} placeholder="e.g. Gardening"/><button onClick={addCategory} type="button">Add</button></div></div>
-        <div className="addGroup"><label htmlFor="new-sub">Add subcategory</label><div className="inlineAdd"><input id="new-sub" value={newSubcategory} onChange={e=>setNewSubcategory(e.target.value)} placeholder="e.g. Indoor plants"/><button onClick={addSubcategory} type="button" disabled={!currentCategory}>Add</button></div></div>
-        <div className="categoryList"><strong>Categories</strong>{categories.map(c=><div className="categoryRow" key={c.id}><span>{c.name}</span><span className="muted">{videos.filter(v=>v.categoryId===c.id).length}</span></div>)}</div>
       </aside>
 
       <section className="library">
@@ -700,6 +768,7 @@ function ContentLibrary({ user }: { user: User }){
                 </label>
                 <h3><a href={v.url} target="_blank" rel="noreferrer">{v.title}</a></h3><p className="channel">{v.channel||"Unknown channel"}</p><div className="tags"><span>{cat?.name||"Uncategorised"}</span>{sub&&<span>{sub.name}</span>}</div>
                 <label className="moveLabel">Move to category</label><select value={v.categoryId} onChange={e=>changeVideoCategory(v.id,e.target.value)}>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                <label className="moveLabel subcategoryMoveLabel">Move to subcategory</label><select value={v.subcategoryId||""} onChange={e=>changeVideoSubcategory(v.id,e.target.value)}><option value="">No subcategory</option>{(cat?.subcategories||[]).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>
                 <div className="cardFoot"><small>{v.contentType||"Saved link"} · {v.platform||"Website"}</small><button className="removeButton" onClick={()=>deleteVideo(v.id)} title="Remove from library">Remove</button></div>
               </div>
             </article>;
@@ -707,7 +776,20 @@ function ContentLibrary({ user }: { user: User }){
         }
       </section>
     </div>
-    <footer>Library data is stored in this browser on this device. Back up regularly by exporting the content library CSV.</footer>
+    {settingsOpen&&<div className="settingsBackdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setSettingsOpen(false);}}>
+      <section className="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div className="settingsHeader"><div><span className="eyebrow">PERSONAL PREFERENCES</span><h2 id="settingsTitle">Settings</h2><p>Changes here apply only to your signed-in account.</p></div><button type="button" className="settingsClose" onClick={()=>setSettingsOpen(false)} aria-label="Close settings">×</button></div>
+        <div className="settingsThemeRow"><div><strong>Appearance</strong><span>Choose how your library looks on your devices.</span></div><div className="themeSwitch"><button type="button" className={theme==="light"?"selected":""} onClick={()=>changeTheme("light")}>☀ Light</button><button type="button" className={theme==="dark"?"selected":""} onClick={()=>changeTheme("dark")}>☾ Dark</button></div></div>
+        <div className="settingsSectionHead"><div><h3>Categories & subcategories</h3><p>Add, rename or remove the structure used in your personal library.</p></div><div className="settingsAddCategory"><input aria-label="New category name" placeholder="New category name" value={newSettingCategory} onChange={e=>setNewSettingCategory(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addSettingCategory();}}/><button type="button" onClick={addSettingCategory}>Add</button></div></div>
+        <div className="settingsCategoryList">{categories.map(c=><div className="settingsCategory" key={c.id}>
+          <div className="settingsCategoryTop">{editingCategoryId===c.id?<div className="settingsEditInline"><input value={editingCategoryName} autoFocus onChange={e=>setEditingCategoryName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveCategoryEdit();if(e.key==="Escape")setEditingCategoryId(null);}}/><button type="button" onClick={saveCategoryEdit}>Save</button><button type="button" className="settingsCancel" onClick={()=>setEditingCategoryId(null)}>Cancel</button></div>:<><strong>{c.name}</strong><span className="muted">{videos.filter(v=>v.categoryId===c.id).length} items</span><button type="button" className="settingsTextAction" onClick={()=>{setEditingCategoryId(c.id);setEditingCategoryName(c.name);}}>Rename</button><button type="button" className="settingsDeleteAction" onClick={()=>removeCategory(c.id)}>Delete</button></>}</div>
+          <div className="settingsSubList">{c.subcategories.map(sub=><div className="settingsSubRow" key={sub.id}>{editingSettingSubId===sub.id?<div className="settingsEditInline"><input value={editingSettingSubName} autoFocus onChange={e=>setEditingSettingSubName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveSettingSubcategory(c.id);if(e.key==="Escape")setEditingSettingSubId(null);}}/><button type="button" onClick={()=>saveSettingSubcategory(c.id)}>Save</button><button type="button" className="settingsCancel" onClick={()=>setEditingSettingSubId(null)}>Cancel</button></div>:<><span>{sub.name}</span><small>{videos.filter(v=>v.categoryId===c.id&&v.subcategoryId===sub.id).length} items</small><button type="button" className="settingsTextAction" onClick={()=>{setEditingSettingSubId(sub.id);setEditingSettingSubName(sub.name);}}>Edit</button><button type="button" className="settingsDeleteAction" onClick={()=>deleteSettingSubcategory(c.id,sub.id)}>Delete</button></>}</div>)}</div>
+          <div className="settingsAddSub"><input aria-label={`New subcategory for ${c.name}`} placeholder="Add a subcategory…" value={newSettingSubcategory[c.id]||""} onChange={e=>setNewSettingSubcategory(prev=>({...prev,[c.id]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter")addSettingSubcategory(c.id);}}/><button type="button" onClick={()=>addSettingSubcategory(c.id)}>Add</button></div>
+        </div>)}</div>
+        <div className="settingsFooter"><span>Synced to your account · {user.email}</span><button type="button" className="outline" onClick={()=>setSettingsOpen(false)}>Done</button></div>
+      </section>
+    </div>}
+    <footer>Library data is synced to your personal account. Export a CSV for an additional backup.</footer>
   </main>;
 }
 

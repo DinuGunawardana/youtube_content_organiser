@@ -260,3 +260,57 @@
   .authMobileBrand{margin-bottom:34px}
   .authWelcome h2{font-size:24px}
 }
+
+
+/* Account-scoped settings and theme */
+.shell.theme-dark{color:#e7eeee;background:#111a1b;color-scheme:dark}
+.theme-dark .panel,.theme-dark .videoCard,.theme-dark .empty{background:#1b2829;border-color:#304142;color:#e7eeee;box-shadow:none}
+.theme-dark .topbar p,.theme-dark .sectionTitle p,.theme-dark .libraryHead p,.theme-dark .channel,.theme-dark .smallNote,.theme-dark footer,.theme-dark .muted{color:#9aabab}
+.theme-dark .topbar h1,.theme-dark .sectionTitle h2,.theme-dark .libraryHead h2,.theme-dark .videoBody h3 a{color:#edf5f4}
+.theme-dark .countPill,.theme-dark .tags span,.theme-dark .notice{background:#203d3a;color:#a8e2d8}
+.theme-dark input,.theme-dark textarea,.theme-dark select{background:#142021!important;color:#e7eeee!important;border-color:#3a5051!important}
+.theme-dark .uploadDrop{background:#172425;border-color:#3b5554}
+.theme-dark .videoBody select{background:#142021;color:#e7eeee;border-color:#3a5051}
+.theme-dark .subCategoryTile,.theme-dark .stripTile{background:#223334;color:#c6d4d3;border-color:#3b5050}
+.theme-dark .subCategoryTile.active,.theme-dark .stripTile.active{background:#1c5550;color:#d5f7ef;border-color:#3a8c83}
+.theme-dark .categoryRow,.theme-dark .categoryList,.theme-dark .cardFoot{border-color:#304142}
+.theme-dark .outline{background:#1c3031;color:#b8e5df;border-color:#3a5554}
+.theme-dark .videoBody h3 a:hover{color:#76d2c6}
+.theme-dark .settingsModal{background:#1b2829;color:#e7eeee;border-color:#3a5051}
+.theme-dark .settingsHeader p,.theme-dark .settingsThemeRow span,.theme-dark .settingsSectionHead p,.theme-dark .settingsFooter,.theme-dark .settingsSubRow small{color:#9aabab}
+.theme-dark .settingsCategory{background:#172425;border-color:#344849}
+.theme-dark .settingsSubRow{border-color:#304142}
+.theme-dark .settingsClose{background:#263839;color:#dce9e8}
+.theme-dark .settingsTextAction{color:#8ed8ce}
+.theme-dark .settingsDeleteAction{color:#f09a91}
+.theme-dark .themeSwitch{background:#142021}
+.settingsManageButton{width:100%;margin-top:10px}
+.subcategoryMoveLabel{margin-top:8px}
+.settingsBackdrop{position:fixed;inset:0;z-index:1000;background:#071b1bcc;display:flex;align-items:center;justify-content:center;padding:22px;backdrop-filter:blur(5px)}
+.settingsModal{width:min(760px,100%);max-height:min(88vh,900px);overflow:auto;background:#fff;color:#1b2a2b;border:1px solid #e0e9e8;border-radius:18px;box-shadow:0 24px 90px #061b1b55;padding:24px}
+.settingsHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;padding-bottom:18px;border-bottom:1px solid #e8eeee}
+.settingsHeader .eyebrow{margin-bottom:6px}.settingsHeader h2{margin:0;font-size:25px;letter-spacing:-.03em}.settingsHeader p,.settingsSectionHead p{margin:5px 0 0;color:#758484;font-size:12px;line-height:1.5}
+.settingsClose{width:34px;height:34px;padding:0;border-radius:50%;font-size:23px;line-height:1;background:#edf4f3;color:#365453}
+.settingsThemeRow{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:17px 0;border-bottom:1px solid #e8eeee}
+.settingsThemeRow>div:first-child{display:flex;flex-direction:column;gap:4px}.settingsThemeRow strong{font-size:13px}.settingsThemeRow span{font-size:11px;color:#7a8989}
+.themeSwitch{display:flex;gap:4px;background:#f0f5f4;padding:4px;border-radius:10px}.themeSwitch button{background:transparent;color:#526565;padding:8px 12px;font-size:11px}.themeSwitch button.selected{background:#087f78;color:#fff;box-shadow:0 2px 6px #1233}
+.settingsSectionHead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:20px 0 12px}.settingsSectionHead h3{margin:0;font-size:16px}.settingsAddCategory{padding:9px 12px;font-size:11px;white-space:nowrap}
+.settingsCategoryList{display:flex;flex-direction:column;gap:10px}
+.settingsCategory{border:1px solid #e2ebea;border-radius:12px;padding:12px 14px;background:#fbfdfd}
+.settingsCategoryTop{display:flex;align-items:center;gap:10px;min-height:30px}.settingsCategoryTop>strong{font-size:13px;flex:1}.settingsCategoryTop>.muted{font-size:10px}
+.settingsTextAction,.settingsDeleteAction{background:transparent;padding:4px 5px;font-size:10px}
+.settingsTextAction{color:#087f78}.settingsDeleteAction{color:#b44f46}
+.settingsSubList{padding-left:13px;margin:6px 0 8px;border-left:2px solid #dcebe8}
+.settingsSubRow{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid #edf1f1;min-height:30px}
+.settingsSubRow>span{font-size:11px;flex:1}.settingsSubRow small{font-size:9px;color:#899595}
+.settingsAddSub{display:flex;gap:7px;margin-top:8px}.settingsAddSub input,.settingsEditInline input{min-width:0;flex:1;border:1px solid #dce5e4;border-radius:7px;padding:8px 9px;font-size:11px;background:#fff;color:#203233}
+.settingsAddSub button,.settingsEditInline button{padding:7px 10px;font-size:10px}
+.settingsEditInline{display:flex;align-items:center;gap:6px;width:100%}.settingsEditInline .settingsCancel{background:#edf2f2;color:#526262}
+.settingsFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding-top:15px;border-top:1px solid #e8eeee;font-size:10px;color:#7b8989}
+@media(max-width:600px){.settingsModal{padding:17px;border-radius:14px}.settingsBackdrop{padding:10px}.settingsSectionHead{align-items:flex-start;flex-direction:column}.settingsCategoryTop{flex-wrap:wrap}.settingsThemeRow{align-items:flex-start;flex-direction:column}.settingsFooter{align-items:flex-start;flex-direction:column}}
+
+.shell.theme-dark{width:100%;padding:42px max(22px,calc((100% - 1440px)/2)) 32px;min-height:100vh}
+
+.settingsAddCategory{display:flex;gap:6px;align-items:center}.settingsAddCategory input{width:145px;min-width:0;border:1px solid #dce5e4;border-radius:7px;padding:8px 9px;font-size:11px;background:#fff;color:#203233}
+.theme-dark .settingsAddCategory input{background:#142021;color:#e7eeee;border-color:#3a5051}
+@media(max-width:600px){.settingsAddCategory{width:100%}.settingsAddCategory input{flex:1;width:auto}}
