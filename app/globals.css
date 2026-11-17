@@ -319,7 +319,7 @@
 /* Floating back-to-top control */
 .backToTopButton{
   position:fixed;
-  right:24px;
+  left:24px;
   bottom:24px;
   z-index:900;
   display:flex;
@@ -343,4 +343,4 @@
 .backToTopButton:focus-visible{outline:3px solid #65c9bd;outline-offset:3px}
 .theme-dark .backToTopButton{background:#1c7770;border-color:#48aaa0;color:#fff}
 @keyframes backToTopIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
-@media(max-width:620px){.backToTopButton{right:15px;bottom:15px;min-height:40px;padding:0 13px}}
+@media(max-width:620px){.backToTopButton{left:15px;bottom:15px;min-height:40px;padding:0 13px}}
