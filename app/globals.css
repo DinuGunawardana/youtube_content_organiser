@@ -309,11 +309,38 @@
 .settingsFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding-top:15px;border-top:1px solid #e8eeee;font-size:10px;color:#7b8989}
 @media(max-width:600px){.settingsModal{padding:17px;border-radius:14px}.settingsBackdrop{padding:10px}.settingsSectionHead{align-items:flex-start;flex-direction:column}.settingsCategoryTop{flex-wrap:wrap}.settingsThemeRow{align-items:flex-start;flex-direction:column}.settingsFooter{align-items:flex-start;flex-direction:column}}
 
+.shell.theme-dark{width:100%;padding:42px max(22px,calc((100% - 1440px)/2)) 32px;min-height:100vh}
 
 .settingsAddCategory{display:flex;gap:6px;align-items:center}.settingsAddCategory input{width:145px;min-width:0;border:1px solid #dce5e4;border-radius:7px;padding:8px 9px;font-size:11px;background:#fff;color:#203233}
 .theme-dark .settingsAddCategory input{background:#142021;color:#e7eeee;border-color:#3a5051}
 @media(max-width:600px){.settingsAddCategory{width:100%}.settingsAddCategory input{flex:1;width:auto}}
 
-/* Apply the dark canvas to the full browser viewport, not only the content shell. */
-:root[data-theme="dark"] body{background:#111a1b;color:#e7eeee;transition:background-color .18s ease,color .18s ease}
-:root[data-theme="light"] body{background:#f4f7f7;color:#1a292a;transition:background-color .18s ease,color .18s ease}
+
+/* Floating back-to-top control */
+.backToTopButton{
+  position:fixed;
+  right:24px;
+  bottom:24px;
+  z-index:900;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  min-height:42px;
+  padding:0 15px;
+  border:1px solid #087f78;
+  border-radius:24px;
+  background:#087f78;
+  color:#fff;
+  box-shadow:0 5px 18px rgba(12,55,51,.22);
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
+  animation:backToTopIn .18s ease-out;
+}
+.backToTopButton span:first-child{font-size:19px;line-height:1}
+.backToTopButton:hover{background:#066b65;transform:translateY(-2px)}
+.backToTopButton:focus-visible{outline:3px solid #65c9bd;outline-offset:3px}
+.theme-dark .backToTopButton{background:#1c7770;border-color:#48aaa0;color:#fff}
+@keyframes backToTopIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:620px){.backToTopButton{right:15px;bottom:15px;min-height:40px;padding:0 13px}}
